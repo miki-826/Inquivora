@@ -3,3 +3,4 @@ pub mod filetype;
 pub mod ops;
 pub mod paths;
 pub mod tree;
+pub mod watcher;
