@@ -14,13 +14,14 @@ const projectRoot = resolve(import.meta.dirname, "..");
 const failures = [];
 
 function run(command, args, options = {}) {
-  return execFileSync(command, args, {
+  const result = execFileSync(command, args, {
     cwd: projectRoot,
     encoding: "utf8",
     shell: process.platform === "win32",
     stdio: ["ignore", "pipe", "pipe"],
     ...options,
-  }).trim();
+  });
+  return typeof result === "string" ? result.trim() : "";
 }
 
 function check(label, fn) {
