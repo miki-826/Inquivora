@@ -1,11 +1,12 @@
 pub mod commands;
 pub mod database;
 pub mod error;
+pub mod tray;
 
 use std::sync::Mutex;
 
 use rusqlite::Connection;
-use tauri::Manager;
+use tauri::{Manager, WindowEvent};
 
 pub struct DbState(pub Mutex<Connection>);
 
@@ -15,11 +16,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.unminimize();
-                let _ = window.set_focus();
-            }
+            tray::show_main_window(app);
         }))
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -31,7 +28,14 @@ pub fn run() {
             let data_dir = app.path().app_data_dir()?;
             let conn = database::open_database(&data_dir.join("inquivora.db"))?;
             app.manage(DbState(Mutex::new(conn)));
+            tray::setup_tray(app.handle())?;
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                let _ = window.hide();
+                api.prevent_close();
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::settings::settings_get,
