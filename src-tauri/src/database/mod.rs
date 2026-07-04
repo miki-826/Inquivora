@@ -1,26 +1,71 @@
 use std::path::Path;
 
+use chrono::Utc;
 use rusqlite::Connection;
 
 use crate::error::AppError;
 
 pub const MIGRATIONS: &[(i64, &str)] = &[(1, include_str!("../../migrations/001_init.sql"))];
 
-pub fn open_database(_path: &Path) -> Result<Connection, AppError> {
-    Err(AppError::new("NOT_IMPLEMENTED", "未実装", false))
+pub fn open_database(path: &Path) -> Result<Connection, AppError> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            AppError::database(format!("データベースディレクトリを作成できません: {e}"))
+        })?;
+    }
+    let mut conn = Connection::open(path)?;
+    conn.pragma_update(None, "journal_mode", "WAL")?;
+    conn.pragma_update(None, "synchronous", "NORMAL")?;
+    conn.pragma_update(None, "foreign_keys", "ON")?;
+    run_migrations(&mut conn)?;
+    Ok(conn)
 }
 
-pub fn run_migrations(_conn: &mut Connection) -> Result<(), AppError> {
-    Err(AppError::new("NOT_IMPLEMENTED", "未実装", false))
+pub fn run_migrations(conn: &mut Connection) -> Result<(), AppError> {
+    let current = current_schema_version(conn)?;
+    for (version, sql) in MIGRATIONS {
+        if *version <= current {
+            continue;
+        }
+        let tx = conn
+            .transaction()
+            .map_err(|e| AppError::database_migration_failed(e.to_string()))?;
+        tx.execute_batch(&strip_pragma_statements(sql)).map_err(|e| {
+            AppError::database_migration_failed(format!("migration {version} の適用に失敗: {e}"))
+        })?;
+        tx.execute(
+            "INSERT INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
+            (version, Utc::now().to_rfc3339()),
+        )
+        .map_err(|e| AppError::database_migration_failed(e.to_string()))?;
+        tx.commit()
+            .map_err(|e| AppError::database_migration_failed(e.to_string()))?;
+    }
+    Ok(())
 }
 
-pub fn current_schema_version(_conn: &Connection) -> Result<i64, AppError> {
-    Err(AppError::new("NOT_IMPLEMENTED", "未実装", false))
+pub fn current_schema_version(conn: &Connection) -> Result<i64, AppError> {
+    let table_exists: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !table_exists {
+        return Ok(0);
+    }
+    let version: Option<i64> = conn.query_row(
+        "SELECT MAX(version) FROM schema_migrations",
+        [],
+        |row| row.get(0),
+    )?;
+    Ok(version.unwrap_or(0))
 }
 
 fn strip_pragma_statements(sql: &str) -> String {
-    let _ = sql;
-    String::new()
+    sql.lines()
+        .filter(|line| !line.trim_start().to_uppercase().starts_with("PRAGMA "))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[cfg(test)]
