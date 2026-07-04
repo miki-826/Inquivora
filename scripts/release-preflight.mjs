@@ -17,7 +17,7 @@ function run(command, args, options = {}) {
   const result = execFileSync(command, args, {
     cwd: projectRoot,
     encoding: "utf8",
-    shell: process.platform === "win32",
+    shell: process.platform === "win32" && command === "npm",
     stdio: ["ignore", "pipe", "pipe"],
     ...options,
   });
