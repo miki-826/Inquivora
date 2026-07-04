@@ -70,7 +70,7 @@ export function viewTypeForFile(
 
 export function addOrActivateTab(
   tabs: EditorTab[],
-  activeTabId: string | null,
+  _activeTabId: string | null,
   newTab: EditorTab,
 ): { tabs: EditorTab[]; activeTabId: string | null } {
   const existing = tabs.find((t) => t.path === newTab.path);

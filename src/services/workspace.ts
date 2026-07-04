@@ -93,3 +93,7 @@ export function openExternal(path: string): Promise<void> {
 export function detectType(path: string): Promise<DetectedType> {
   return invoke("file_detect_type", { path });
 }
+
+export function readFileBase64(path: string): Promise<string> {
+  return invoke("file_read_base64", { path });
+}
