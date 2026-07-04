@@ -53,7 +53,7 @@ npm run release:windows -- --version 0.1.0
 ## 実装状況
 
 - [x] Phase 1: Windowsアプリ基盤（アプリシェル・SQLite・トレイ常駐・リリースパイプライン）— v0.1.0-alpha.1でGitHub ActionsからのEXE生成・インストール・起動を検証済み。updaterプラグインの登録は自動更新を構成するPhase 7で行う
-- [ ] Phase 2: ワークスペース（ファイルツリー・Monaco Editor・自動保存）
+- [x] Phase 2: ワークスペース（フォルダ選択・仮想化ファイルツリー・Monaco Editorタブ・800ms自動保存＋アトミック保存・文字コード維持・Markdownプレビュー・外部変更検知と競合ダイアログ・パストラバーサル拒否）— v0.1.0-alpha.2
 - [ ] Phase 3: タスク・カレンダー
 - [ ] Phase 4: 通知
 - [ ] Phase 5: API設定・録音・文字起こし
