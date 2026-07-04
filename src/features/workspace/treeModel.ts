@@ -16,20 +16,32 @@ export type TreeRow = {
 };
 
 export function parentPath(relativePath: string): string {
-  throw new Error("未実装");
+  const index = relativePath.lastIndexOf("/");
+  return index === -1 ? "" : relativePath.slice(0, index);
 }
 
 export function joinPath(parent: string, name: string): string {
-  throw new Error("未実装");
+  return parent === "" ? name : `${parent}/${name}`;
 }
 
 export function isSameOrDescendant(ancestor: string, path: string): boolean {
-  throw new Error("未実装");
+  if (ancestor === "") return true;
+  return path === ancestor || path.startsWith(`${ancestor}/`);
 }
 
 export function flattenTree(
   children: Record<string, TreeEntry[] | undefined>,
   expanded: ReadonlySet<string>,
 ): TreeRow[] {
-  throw new Error("未実装");
+  const rows: TreeRow[] = [];
+  const walk = (path: string, depth: number) => {
+    for (const entry of children[path] ?? []) {
+      rows.push({ entry, depth });
+      if (entry.isFolder && expanded.has(entry.relativePath)) {
+        walk(entry.relativePath, depth + 1);
+      }
+    }
+  };
+  walk("", 0);
+  return rows;
 }
