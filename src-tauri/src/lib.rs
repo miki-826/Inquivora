@@ -2,6 +2,7 @@ pub mod commands;
 pub mod database;
 pub mod error;
 pub mod tray;
+pub mod workspace;
 
 use std::sync::Mutex;
 
