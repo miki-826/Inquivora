@@ -218,6 +218,11 @@ pub fn copy_entry(source: &Path, destination: &Path) -> Result<(), AppError> {
     }
 }
 
+/// プレビュー用にファイルをbase64で返す（画像等・10MB上限）
+pub fn read_file_base64(_path: &Path) -> Result<String, AppError> {
+    todo!()
+}
+
 pub fn move_entry(source: &Path, destination: &Path) -> Result<(), AppError> {
     if destination.exists() {
         return Err(io_error(format!("移動先がすでに存在します: {}", destination.display())));
@@ -374,6 +379,14 @@ mod tests {
         move_entry(&src, &dst_dir.join("a.txt")).unwrap();
         assert!(!src.exists());
         assert_eq!(fs::read_to_string(dst_dir.join("a.txt")).unwrap(), "x");
+    }
+
+    #[test]
+    fn base64でファイルを読める() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("img.png");
+        fs::write(&path, [1u8, 2, 3, 255]).unwrap();
+        assert_eq!(read_file_base64(&path).unwrap(), "AQID/w==");
     }
 
     #[test]

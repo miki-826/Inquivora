@@ -1,4 +1,5 @@
 pub mod settings;
+pub mod tabs;
 pub mod workspaces;
 
 use std::path::Path;
