@@ -12,8 +12,9 @@ pub struct DbState(pub Mutex<Connection>);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // updaterプラグインはplugins.updater設定（署名公開鍵・endpoints）が必須のため、
+    // 自動更新を構成するPhase 7で登録する
     tauri::Builder::default()
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             tray::show_main_window(app);
