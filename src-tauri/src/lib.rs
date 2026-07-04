@@ -58,6 +58,9 @@ pub fn run() {
             commands::files::file_reveal,
             commands::files::file_open_external,
             commands::files::file_detect_type,
+            commands::files::file_read_base64,
+            commands::files::tabs_save,
+            commands::files::tabs_load,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

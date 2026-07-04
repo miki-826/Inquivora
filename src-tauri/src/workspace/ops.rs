@@ -219,8 +219,20 @@ pub fn copy_entry(source: &Path, destination: &Path) -> Result<(), AppError> {
 }
 
 /// プレビュー用にファイルをbase64で返す（画像等・10MB上限）
-pub fn read_file_base64(_path: &Path) -> Result<String, AppError> {
-    todo!()
+pub fn read_file_base64(path: &Path) -> Result<String, AppError> {
+    use base64::Engine;
+    let size = std::fs::metadata(path)
+        .map_err(|e| io_error(format!("ファイル情報を取得できません: {e}")))?
+        .len();
+    if size >= READ_ONLY_THRESHOLD {
+        return Err(AppError::new(
+            "FILE_TOO_LARGE",
+            "10MB以上のファイルはプレビューできません",
+            false,
+        ));
+    }
+    let bytes = std::fs::read(path).map_err(|e| io_error(format!("読み込めません: {e}")))?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
 }
 
 pub fn move_entry(source: &Path, destination: &Path) -> Result<(), AppError> {

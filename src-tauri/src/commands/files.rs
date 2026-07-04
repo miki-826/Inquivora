@@ -138,6 +138,30 @@ pub fn file_open_external(
         .map_err(|e| AppError::new("FILE_IO_ERROR", format!("既定アプリで開けません: {e}"), true))
 }
 
+#[tauri::command]
+pub fn file_read_base64(ws: State<'_, WorkspaceState>, path: String) -> Result<String, AppError> {
+    ops::read_file_base64(checked_path(&ws, &path)?)
+}
+
+#[tauri::command]
+pub fn tabs_save(
+    db: State<'_, DbState>,
+    workspace_id: String,
+    tabs: Vec<crate::database::tabs::RecentTab>,
+) -> Result<(), AppError> {
+    let conn = db.0.lock().map_err(lock_error)?;
+    crate::database::tabs::save_tabs(&conn, &workspace_id, &tabs)
+}
+
+#[tauri::command]
+pub fn tabs_load(
+    db: State<'_, DbState>,
+    workspace_id: String,
+) -> Result<Vec<crate::database::tabs::RecentTab>, AppError> {
+    let conn = db.0.lock().map_err(lock_error)?;
+    crate::database::tabs::load_tabs(&conn, &workspace_id)
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DetectedType {

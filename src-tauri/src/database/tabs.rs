@@ -14,13 +14,45 @@ pub struct RecentTab {
 }
 
 /// ワークスペースのタブ一覧を丸ごと置き換えて保存する。
-pub fn save_tabs(_conn: &Connection, _workspace_id: &str, _tabs: &[RecentTab]) -> Result<(), AppError> {
-    todo!()
+pub fn save_tabs(conn: &Connection, workspace_id: &str, tabs: &[RecentTab]) -> Result<(), AppError> {
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute("DELETE FROM recent_tabs WHERE workspace_id = ?1", [workspace_id])?;
+    let mut stmt = conn.prepare(
+        "INSERT INTO recent_tabs (id, workspace_id, path, tab_order, is_pinned, cursor_line, cursor_column, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+    )?;
+    for (order, tab) in tabs.iter().enumerate() {
+        stmt.execute((
+            uuid::Uuid::new_v4().to_string(),
+            workspace_id,
+            &tab.path,
+            order as i64,
+            tab.is_pinned,
+            tab.cursor_line,
+            tab.cursor_column,
+            &now,
+        ))?;
+    }
+    Ok(())
 }
 
 /// タブ一覧を保存時の順序で返す。
-pub fn load_tabs(_conn: &Connection, _workspace_id: &str) -> Result<Vec<RecentTab>, AppError> {
-    todo!()
+pub fn load_tabs(conn: &Connection, workspace_id: &str) -> Result<Vec<RecentTab>, AppError> {
+    let mut stmt = conn.prepare(
+        "SELECT path, is_pinned, cursor_line, cursor_column FROM recent_tabs
+         WHERE workspace_id = ?1 ORDER BY tab_order",
+    )?;
+    let tabs = stmt
+        .query_map([workspace_id], |row| {
+            Ok(RecentTab {
+                path: row.get(0)?,
+                is_pinned: row.get(1)?,
+                cursor_line: row.get(2)?,
+                cursor_column: row.get(3)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(tabs)
 }
 
 #[cfg(test)]
