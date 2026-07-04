@@ -1,3 +1,5 @@
+pub mod settings;
+
 use std::path::Path;
 
 use chrono::Utc;
