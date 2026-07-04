@@ -10,14 +10,53 @@ pub enum FileCategory {
     Unknown,
 }
 
-/// 拡張子（小文字・ドットなし）から種別を判定する（§7.4）
-pub fn category_for_extension(_extension: &str) -> FileCategory {
-    todo!()
+const EDIT_EXTENSIONS: &[&str] = &[
+    "md", "txt", "log", "csv", "json", "jsonl", "yaml", "yml", "xml", "ini", "conf", "env",
+    "html", "css", "scss", "js", "jsx", "ts", "tsx", "py", "ps1", "bat", "sh", "sql", "rs",
+    "cs", "java",
+];
+
+const PREVIEW_EXTENSIONS: &[&str] = &[
+    "png", "jpg", "jpeg", "gif", "webp", "svg", "pdf", "wav", "mp3", "m4a", "mp4", "webm",
+];
+
+const EXTERNAL_EXTENSIONS: &[&str] = &["docx", "xlsx", "pptx", "dwg", "zip", "7z", "exe", "dll"];
+
+/// 拡張子（ドットなし）から種別を判定する（§7.4）
+pub fn category_for_extension(extension: &str) -> FileCategory {
+    let ext = extension.to_lowercase();
+    if EDIT_EXTENSIONS.contains(&ext.as_str()) {
+        FileCategory::Edit
+    } else if PREVIEW_EXTENSIONS.contains(&ext.as_str()) {
+        FileCategory::Preview
+    } else if EXTERNAL_EXTENSIONS.contains(&ext.as_str()) {
+        FileCategory::External
+    } else {
+        FileCategory::Unknown
+    }
 }
 
 /// 先頭サンプル（最大8KB）からテキストらしさを判定する（§7.5）
-pub fn is_probably_text(_sample: &[u8]) -> bool {
-    todo!()
+pub fn is_probably_text(sample: &[u8]) -> bool {
+    let sample = &sample[..sample.len().min(8192)];
+    if sample.is_empty() {
+        return true;
+    }
+    if sample.contains(&0) {
+        return false;
+    }
+    let control_count = sample
+        .iter()
+        .filter(|&&b| b < 0x20 && b != b'\t' && b != b'\n' && b != b'\r' && b != 0x0C)
+        .count();
+    if control_count * 10 > sample.len() {
+        return false;
+    }
+    if std::str::from_utf8(sample).is_ok() {
+        return true;
+    }
+    let (_, _, had_errors) = encoding_rs::SHIFT_JIS.decode(sample);
+    !had_errors
 }
 
 #[cfg(test)]

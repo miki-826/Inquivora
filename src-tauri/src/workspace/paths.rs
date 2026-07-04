@@ -2,17 +2,59 @@ use std::path::{Path, PathBuf};
 
 use crate::error::AppError;
 
+fn outside_workspace(detail: impl Into<String>) -> AppError {
+    AppError::new("PATH_OUTSIDE_WORKSPACE", detail, false)
+}
+
 /// ワークスペースルートからの相対パスを検証して絶対パスへ解決する（§20.1）。
 /// `..`・絶対パス・ドライブ指定を含む相対パスは PATH_OUTSIDE_WORKSPACE で拒否する。
-pub fn resolve_in_workspace(_root: &Path, _relative: &str) -> Result<PathBuf, AppError> {
-    todo!()
+pub fn resolve_in_workspace(root: &Path, relative: &str) -> Result<PathBuf, AppError> {
+    let normalized = relative.replace('\\', "/");
+    if normalized.starts_with('/') || normalized.contains(':') {
+        return Err(outside_workspace(format!("絶対パスは指定できません: {relative}")));
+    }
+    let mut resolved = root.to_path_buf();
+    for segment in normalized.split('/') {
+        match segment {
+            "" | "." => continue,
+            ".." => return Err(outside_workspace(format!("親ディレクトリ参照は許可されません: {relative}"))),
+            _ => resolved.push(segment),
+        }
+    }
+    Ok(resolved)
+}
+
+/// パスを比較用セグメント列へ正規化する。`.` は除去し、`..` は None（拒否）を返す。
+fn normalized_segments(path: &Path) -> Option<Vec<String>> {
+    let raw = path.to_string_lossy().replace('\\', "/");
+    let mut segments = Vec::new();
+    for segment in raw.split('/') {
+        match segment {
+            "" | "." => continue,
+            ".." => return None,
+            _ => segments.push(segment.to_lowercase()),
+        }
+    }
+    Some(segments)
 }
 
 /// 絶対パスがワークスペースルート配下であることを検証する（§20.1）。
 /// Windowsの大文字小文字差・区切り文字差を吸収し、前方一致の誤判定
 /// （`C:\ws` と `C:\ws2`）を起こさない。
-pub fn ensure_within_workspace(_root: &Path, _absolute: &Path) -> Result<(), AppError> {
-    todo!()
+pub fn ensure_within_workspace(root: &Path, absolute: &Path) -> Result<(), AppError> {
+    let root_segments = normalized_segments(root)
+        .ok_or_else(|| outside_workspace("ワークスペースルートが不正です"))?;
+    let target_segments = normalized_segments(absolute)
+        .ok_or_else(|| outside_workspace(format!("親ディレクトリ参照は許可されません: {}", absolute.display())))?;
+    if target_segments.len() < root_segments.len()
+        || target_segments[..root_segments.len()] != root_segments[..]
+    {
+        return Err(outside_workspace(format!(
+            "ワークスペース外のパスです: {}",
+            absolute.display()
+        )));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
