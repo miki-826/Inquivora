@@ -1,3 +1,4 @@
+pub mod commands;
 pub mod database;
 pub mod error;
 
@@ -32,7 +33,10 @@ pub fn run() {
             app.manage(DbState(Mutex::new(conn)));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![])
+        .invoke_handler(tauri::generate_handler![
+            commands::settings::settings_get,
+            commands::settings::settings_set,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

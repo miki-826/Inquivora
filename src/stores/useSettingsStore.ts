@@ -1,26 +1,63 @@
 import { create } from "zustand";
+import {
+  clampSidebarWidth,
+  DEFAULT_LAYOUT_SETTINGS,
+  parseLayoutSettings,
+  SIDEBAR_WIDTH_MAX,
+  SIDEBAR_WIDTH_MIN,
+} from "../schemas/layoutSettings";
+import { loadSetting, saveSetting } from "../services/settings";
 
-export const SIDEBAR_WIDTH_MIN = 200;
-export const SIDEBAR_WIDTH_MAX = 600;
+export { clampSidebarWidth, SIDEBAR_WIDTH_MAX, SIDEBAR_WIDTH_MIN };
 
-export function clampSidebarWidth(width: number): number {
-  return Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, Math.round(width)));
-}
+const LAYOUT_SETTING_KEY = "ui.layout";
+const PERSIST_DEBOUNCE_MS = 500;
 
 type SettingsState = {
   leftSidebarWidth: number;
   rightSidebarWidth: number;
   lastScreen: string;
+  hydrated: boolean;
+  hydrate: () => Promise<void>;
   setLeftSidebarWidth: (width: number) => void;
   setRightSidebarWidth: (width: number) => void;
   setLastScreen: (path: string) => void;
 };
 
-export const useSettingsStore = create<SettingsState>((set) => ({
-  leftSidebarWidth: 320,
-  rightSidebarWidth: 360,
-  lastScreen: "/workspace",
-  setLeftSidebarWidth: (width) => set({ leftSidebarWidth: clampSidebarWidth(width) }),
-  setRightSidebarWidth: (width) => set({ rightSidebarWidth: clampSidebarWidth(width) }),
-  setLastScreen: (path) => set({ lastScreen: path }),
+let persistTimer: ReturnType<typeof setTimeout> | undefined;
+
+function schedulePersist(get: () => SettingsState) {
+  clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    const { leftSidebarWidth, rightSidebarWidth, lastScreen } = get();
+    saveSetting(LAYOUT_SETTING_KEY, { leftSidebarWidth, rightSidebarWidth, lastScreen }).catch(
+      (error) => console.error("レイアウト設定の保存に失敗しました", error),
+    );
+  }, PERSIST_DEBOUNCE_MS);
+}
+
+export const useSettingsStore = create<SettingsState>((set, get) => ({
+  ...DEFAULT_LAYOUT_SETTINGS,
+  hydrated: false,
+  hydrate: async () => {
+    try {
+      const stored = await loadSetting(LAYOUT_SETTING_KEY);
+      set({ ...parseLayoutSettings(stored), hydrated: true });
+    } catch (error) {
+      console.error("レイアウト設定の読み込みに失敗しました", error);
+      set({ hydrated: true });
+    }
+  },
+  setLeftSidebarWidth: (width) => {
+    set({ leftSidebarWidth: clampSidebarWidth(width) });
+    schedulePersist(get);
+  },
+  setRightSidebarWidth: (width) => {
+    set({ rightSidebarWidth: clampSidebarWidth(width) });
+    schedulePersist(get);
+  },
+  setLastScreen: (path) => {
+    set({ lastScreen: path });
+    schedulePersist(get);
+  },
 }));
