@@ -1,0 +1,46 @@
+# Node / frontend
+node_modules/
+dist/
+dist-ssr/
+npm-debug.log*
+
+# Rust / Tauri build
+src-tauri/target/
+
+# .NET Sidecar build
+sidecars/**/bin/
+sidecars/**/obj/
+native/**/bin/
+native/**/obj/
+
+# Local data and secrets
+.env
+.env.*
+!.env.example
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.wav
+*.mp3
+*.m4a
+*.log
+logs/
+recordings/
+credentials/
+local-data/
+
+# Signing material
+*.pfx
+*.p12
+*.pem
+*.key
+*.cer
+*.crt
+
+# IDE / OS
+.vscode/settings.local.json
+.idea/
+.DS_Store
+Thumbs.db

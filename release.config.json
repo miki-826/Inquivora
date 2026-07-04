@@ -1,0 +1,7 @@
+{
+  "repositoryUrl": "https://github.com/miki-826/Inquivora.git",
+  "branch": "main",
+  "releaseTagPrefix": "v",
+  "buildMode": "github-actions",
+  "artifactRetentionDays": 30
+}
