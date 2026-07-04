@@ -29,14 +29,78 @@ pub struct TreeEntry {
     pub category: FileCategory,
 }
 
+fn io_error(detail: impl Into<String>) -> AppError {
+    AppError::new("FILE_IO_ERROR", detail, true)
+}
+
+fn is_ignored(name: &str, ignore_patterns: &[String]) -> bool {
+    ignore_patterns.iter().any(|p| p.eq_ignore_ascii_case(name))
+}
+
+/// フォルダに無視対象以外の子が1つでもあるかを調べる（展開矢印表示用）
+fn folder_has_children(path: &Path, ignore_patterns: &[String]) -> bool {
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        if !is_ignored(&entry.file_name().to_string_lossy(), ignore_patterns) {
+            return true;
+        }
+    }
+    false
+}
+
 /// 指定フォルダ直下の子要素を返す（遅延読み込み・§7.3）。
 /// 無視パターンに一致する名前は除外し、フォルダ優先・名前順で返す。
 pub fn list_children(
-    _root: &Path,
-    _relative_path: &str,
-    _ignore_patterns: &[String],
+    root: &Path,
+    relative_path: &str,
+    ignore_patterns: &[String],
 ) -> Result<Vec<TreeEntry>, AppError> {
-    todo!()
+    let dir = crate::workspace::paths::resolve_in_workspace(root, relative_path)?;
+    let read_dir = std::fs::read_dir(&dir)
+        .map_err(|e| io_error(format!("フォルダを読み取れません ({}): {e}", dir.display())))?;
+
+    let prefix = relative_path.trim_matches('/');
+    let mut entries = Vec::new();
+    for entry in read_dir {
+        let entry = entry.map_err(|e| io_error(format!("フォルダを読み取れません: {e}")))?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if is_ignored(&name, ignore_patterns) {
+            continue;
+        }
+        let metadata = entry
+            .metadata()
+            .map_err(|e| io_error(format!("ファイル情報を取得できません ({name}): {e}")))?;
+        let is_folder = metadata.is_dir();
+        let extension = if is_folder {
+            None
+        } else {
+            entry.path().extension().map(|e| e.to_string_lossy().to_lowercase())
+        };
+        entries.push(TreeEntry {
+            relative_path: if prefix.is_empty() {
+                name.clone()
+            } else {
+                format!("{prefix}/{name}")
+            },
+            is_folder,
+            has_children: is_folder && folder_has_children(&entry.path(), ignore_patterns),
+            size_bytes: if is_folder { 0 } else { metadata.len() },
+            category: match &extension {
+                Some(ext) => crate::workspace::filetype::category_for_extension(ext),
+                None => FileCategory::Unknown,
+            },
+            extension,
+            name,
+        });
+    }
+    entries.sort_by(|a, b| {
+        b.is_folder
+            .cmp(&a.is_folder)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+    Ok(entries)
 }
 
 #[cfg(test)]

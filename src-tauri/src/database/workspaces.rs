@@ -16,18 +16,59 @@ pub struct WorkspaceRecord {
     pub updated_at: String,
 }
 
+fn row_to_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<WorkspaceRecord> {
+    Ok(WorkspaceRecord {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        root_path: row.get(2)?,
+        last_opened_at: row.get(3)?,
+        created_at: row.get(4)?,
+        updated_at: row.get(5)?,
+    })
+}
+
+const SELECT_COLUMNS: &str = "id, name, root_path, last_opened_at, created_at, updated_at";
+
 /// ワークスペースを開いた記録を保存する。同一root_pathは最終使用日時のみ更新する。
-pub fn open_workspace(_conn: &Connection, _root_path: &str, _name: &str) -> Result<WorkspaceRecord, AppError> {
-    todo!()
+pub fn open_workspace(conn: &Connection, root_path: &str, name: &str) -> Result<WorkspaceRecord, AppError> {
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO workspaces (id, name, root_path, last_opened_at, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?4, ?4)
+         ON CONFLICT(root_path) DO UPDATE SET
+           name = excluded.name,
+           last_opened_at = excluded.last_opened_at,
+           updated_at = excluded.updated_at",
+        (uuid::Uuid::new_v4().to_string(), name, root_path, &now),
+    )?;
+    let record = conn.query_row(
+        &format!("SELECT {SELECT_COLUMNS} FROM workspaces WHERE root_path = ?1"),
+        [root_path],
+        row_to_record,
+    )?;
+    Ok(record)
 }
 
 /// 最近開いたワークスペースを新しい順に最大10件返す（§7.1）。
-pub fn list_recent_workspaces(_conn: &Connection) -> Result<Vec<WorkspaceRecord>, AppError> {
-    todo!()
+pub fn list_recent_workspaces(conn: &Connection) -> Result<Vec<WorkspaceRecord>, AppError> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {SELECT_COLUMNS} FROM workspaces ORDER BY last_opened_at DESC LIMIT {RECENT_WORKSPACE_LIMIT}"
+    ))?;
+    let records = stmt
+        .query_map([], row_to_record)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(records)
 }
 
-pub fn get_workspace(_conn: &Connection, _id: &str) -> Result<WorkspaceRecord, AppError> {
-    todo!()
+pub fn get_workspace(conn: &Connection, id: &str) -> Result<WorkspaceRecord, AppError> {
+    use rusqlite::OptionalExtension;
+    conn.query_row(
+        &format!("SELECT {SELECT_COLUMNS} FROM workspaces WHERE id = ?1"),
+        [id],
+        row_to_record,
+    )
+    .optional()?
+    .ok_or_else(|| AppError::new("WORKSPACE_NOT_FOUND", format!("ワークスペースが存在しません: {id}"), false))
 }
 
 #[cfg(test)]
