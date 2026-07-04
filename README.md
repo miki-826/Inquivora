@@ -52,7 +52,7 @@ npm run release:windows -- --version 0.1.0
 
 ## 実装状況
 
-- [ ] Phase 1: Windowsアプリ基盤（アプリシェル・SQLite・トレイ常駐・リリースパイプライン）
+- [x] Phase 1: Windowsアプリ基盤（アプリシェル・SQLite・トレイ常駐・リリースパイプライン）— v0.1.0-alpha.1でGitHub ActionsからのEXE生成・インストール・起動を検証済み。updaterプラグインの登録は自動更新を構成するPhase 7で行う
 - [ ] Phase 2: ワークスペース（ファイルツリー・Monaco Editor・自動保存）
 - [ ] Phase 3: タスク・カレンダー
 - [ ] Phase 4: 通知
