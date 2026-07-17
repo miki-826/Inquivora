@@ -1,13 +1,20 @@
+import { useEffect } from "react";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
-import { PanePlaceholder } from "../../components/common/PanePlaceholder";
+import { useTaskStore } from "../../stores/useTaskStore";
+import { TaskDetailPanel } from "./TaskDetailPanel";
+import { TaskFilterPanel } from "./TaskFilterPanel";
+import { TaskList } from "./TaskList";
 
 export function TasksPage() {
+  const load = useTaskStore((s) => s.load);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
   return (
-    <ThreePaneLayout
-      left={<PanePlaceholder title="フィルター" description="今日・今週・期限切れ・完了" />}
-      right={<PanePlaceholder title="タスク詳細" description="Phase 3で実装予定" />}
-    >
-      <PanePlaceholder title="タスク" description="期日昇順のタスク一覧（Phase 3で実装予定）" />
+    <ThreePaneLayout left={<TaskFilterPanel />} right={<TaskDetailPanel />}>
+      <TaskList />
     </ThreePaneLayout>
   );
 }

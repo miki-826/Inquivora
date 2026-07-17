@@ -37,6 +37,12 @@ export type CalendarInput = {
   };
 };
 
+/** 日付文字列（yyyy-MM-dd）を日数分ずらす */
+export function shiftDateString(dateString: string, days: number): string {
+  const ms = Date.parse(`${dateString}T00:00:00Z`) + days * 86_400_000;
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
 /** 予定をFullCalendar入力へ変換する。終日はTokyoの日付文字列（endは排他的）で表す */
 export function eventToCalendarInput(event: EventRecord): CalendarInput {
   const input: CalendarInput = {
