@@ -46,7 +46,7 @@ export function findForbiddenTrackedFiles(paths) {
 }
 
 const SECRET_PATTERNS = [
-  { name: "OpenAI APIキー", regex: /sk-[A-Za-z0-9_-]{20,}/ },
+  { name: "OpenAI APIキー", regex: /(?<![A-Za-z0-9-])sk-[A-Za-z0-9_-]{20,}/ },
   { name: "GitHubトークン", regex: /gh[pousr]_[A-Za-z0-9]{36,}/ },
   { name: "GitHub fine-grainedトークン", regex: /github_pat_[A-Za-z0-9_]{22,}/ },
   { name: "AWSアクセスキー", regex: /AKIA[0-9A-Z]{16}/ },
