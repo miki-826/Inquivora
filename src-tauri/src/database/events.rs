@@ -76,33 +76,144 @@ pub struct EventPatch {
     pub location: Option<Option<String>>,
 }
 
-pub fn create_event(_conn: &Connection, _input: &EventInput) -> Result<EventRecord, AppError> {
-    todo!()
+const SELECT_COLUMNS: &str = "id, title, description, start_at, end_at, timezone, all_day, event_type, recurrence_rule, meeting_id, task_id, location, created_at, updated_at";
+
+fn row_to_event(row: &rusqlite::Row<'_>) -> rusqlite::Result<EventRecord> {
+    let all_day: i64 = row.get(6)?;
+    Ok(EventRecord {
+        id: row.get(0)?,
+        title: row.get(1)?,
+        description: row.get(2)?,
+        start_at: row.get(3)?,
+        end_at: row.get(4)?,
+        timezone: row.get(5)?,
+        all_day: all_day != 0,
+        event_type: row.get(7)?,
+        recurrence_rule: row.get(8)?,
+        meeting_id: row.get(9)?,
+        task_id: row.get(10)?,
+        location: row.get(11)?,
+        created_at: row.get(12)?,
+        updated_at: row.get(13)?,
+    })
 }
 
-pub fn get_event(_conn: &Connection, _id: &str) -> Result<EventRecord, AppError> {
-    todo!()
+fn validation_error(message: impl Into<String>) -> AppError {
+    AppError::new("VALIDATION_ERROR", message, false)
+}
+
+fn validate(title: &str, start_at: &str, end_at: Option<&str>) -> Result<(), AppError> {
+    if title.trim().is_empty() {
+        return Err(validation_error("タイトルを入力してください"));
+    }
+    let start = chrono::DateTime::parse_from_rfc3339(start_at)
+        .map_err(|_| validation_error(format!("開始日時はRFC3339形式で指定してください: {start_at}")))?;
+    if let Some(end_at) = end_at {
+        let end = chrono::DateTime::parse_from_rfc3339(end_at)
+            .map_err(|_| validation_error(format!("終了日時はRFC3339形式で指定してください: {end_at}")))?;
+        if end < start {
+            return Err(validation_error("終了日時は開始日時より後にしてください"));
+        }
+    }
+    Ok(())
+}
+
+pub fn create_event(conn: &Connection, input: &EventInput) -> Result<EventRecord, AppError> {
+    validate(&input.title, &input.start_at_utc, input.end_at_utc.as_deref())?;
+    let now = chrono::Utc::now().to_rfc3339();
+    let id = uuid::Uuid::new_v4().to_string();
+    conn.execute(
+        "INSERT INTO events (id, title, description, start_at, end_at, timezone, all_day, event_type, recurrence_rule, meeting_id, task_id, location, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13)",
+        rusqlite::params![
+            id,
+            input.title.trim(),
+            input.description,
+            input.start_at_utc,
+            input.end_at_utc,
+            input.timezone,
+            input.all_day as i64,
+            input.event_type,
+            input.recurrence_rule,
+            input.meeting_id,
+            input.task_id,
+            input.location,
+            now,
+        ],
+    )?;
+    get_event(conn, &id)
+}
+
+pub fn get_event(conn: &Connection, id: &str) -> Result<EventRecord, AppError> {
+    use rusqlite::OptionalExtension;
+    conn.query_row(
+        &format!("SELECT {SELECT_COLUMNS} FROM events WHERE id = ?1"),
+        [id],
+        row_to_event,
+    )
+    .optional()?
+    .ok_or_else(|| AppError::new("EVENT_NOT_FOUND", format!("予定が存在しません: {id}"), false))
 }
 
 pub fn update_event(
-    _conn: &Connection,
-    _id: &str,
-    _patch: &EventPatch,
+    conn: &Connection,
+    id: &str,
+    patch: &EventPatch,
 ) -> Result<EventRecord, AppError> {
-    todo!()
+    let current = get_event(conn, id)?;
+    let title = patch.title.clone().unwrap_or(current.title);
+    let start_at = patch.start_at_utc.clone().unwrap_or(current.start_at);
+    let end_at = patch.end_at_utc.clone().unwrap_or(current.end_at);
+    validate(&title, &start_at, end_at.as_deref())?;
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE events SET title = ?2, description = ?3, start_at = ?4, end_at = ?5, timezone = ?6,
+           all_day = ?7, event_type = ?8, recurrence_rule = ?9, location = ?10, updated_at = ?11
+         WHERE id = ?1",
+        rusqlite::params![
+            id,
+            title.trim(),
+            patch.description.clone().unwrap_or(current.description),
+            start_at,
+            end_at,
+            patch.timezone.clone().unwrap_or(current.timezone),
+            patch.all_day.unwrap_or(current.all_day) as i64,
+            patch.event_type.clone().unwrap_or(current.event_type),
+            patch.recurrence_rule.clone().unwrap_or(current.recurrence_rule),
+            patch.location.clone().unwrap_or(current.location),
+            now,
+        ],
+    )?;
+    get_event(conn, id)
 }
 
-pub fn delete_event(_conn: &Connection, _id: &str) -> Result<(), AppError> {
-    todo!()
+pub fn delete_event(conn: &Connection, id: &str) -> Result<(), AppError> {
+    let affected = conn.execute("DELETE FROM events WHERE id = ?1", [id])?;
+    if affected == 0 {
+        return Err(AppError::new(
+            "EVENT_NOT_FOUND",
+            format!("予定が存在しません: {id}"),
+            false,
+        ));
+    }
+    Ok(())
 }
 
 /// [startUtc, endUtc) と重なる予定を開始日時の昇順で返す（§17.5）。
 pub fn list_events_in_range(
-    _conn: &Connection,
-    _start_utc: &str,
-    _end_utc: &str,
+    conn: &Connection,
+    start_utc: &str,
+    end_utc: &str,
 ) -> Result<Vec<EventRecord>, AppError> {
-    todo!()
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {SELECT_COLUMNS} FROM events
+         WHERE start_at < ?2 AND COALESCE(end_at, start_at) >= ?1
+         ORDER BY start_at ASC"
+    ))?;
+    let events = stmt
+        .query_map([start_utc, end_utc], row_to_event)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(events)
 }
 
 #[cfg(test)]

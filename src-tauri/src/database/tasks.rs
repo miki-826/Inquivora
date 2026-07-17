@@ -157,42 +157,260 @@ pub struct TaskFilter {
     pub assignee: Option<String>,
 }
 
+const SELECT_COLUMNS: &str = "id, title, description, due_at, timezone, priority, status, assignee, project_name, meeting_id, linked_file_path, created_at, updated_at, completed_at";
+
+const DEFAULT_ORDER: &str = "ORDER BY
+  CASE WHEN status = 'completed' THEN 1 ELSE 0 END,
+  CASE WHEN due_at IS NULL THEN 1 ELSE 0 END,
+  due_at ASC,
+  CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
+  created_at ASC";
+
+fn row_to_task(row: &rusqlite::Row<'_>) -> rusqlite::Result<Task> {
+    let priority: String = row.get(5)?;
+    let status: String = row.get(6)?;
+    Ok(Task {
+        id: row.get(0)?,
+        title: row.get(1)?,
+        description: row.get(2)?,
+        due_at: row.get(3)?,
+        timezone: row.get(4)?,
+        priority: TaskPriority::from_db(&priority),
+        status: TaskStatus::from_db(&status),
+        assignee: row.get(7)?,
+        project_name: row.get(8)?,
+        meeting_id: row.get(9)?,
+        linked_file_path: row.get(10)?,
+        created_at: row.get(11)?,
+        updated_at: row.get(12)?,
+        completed_at: row.get(13)?,
+    })
+}
+
+fn validation_error(message: impl Into<String>) -> AppError {
+    AppError::new("VALIDATION_ERROR", message, false)
+}
+
+fn validate_title(title: &str) -> Result<(), AppError> {
+    if title.trim().is_empty() {
+        return Err(validation_error("タイトルを入力してください"));
+    }
+    Ok(())
+}
+
+fn parse_utc(value: &str) -> Result<DateTime<Utc>, AppError> {
+    DateTime::parse_from_rfc3339(value)
+        .map(|dt| dt.with_timezone(&Utc))
+        .map_err(|_| validation_error(format!("日時はRFC3339形式で指定してください: {value}")))
+}
+
 /// 期日がAsia/Tokyoの0時ちょうど（=日付のみのタスク）かを判定する（§13.4）。
-pub fn is_date_only_due(_due_at_utc: &str) -> bool {
-    todo!()
+pub fn is_date_only_due(due_at_utc: &str) -> bool {
+    use chrono::Timelike;
+    match DateTime::parse_from_rfc3339(due_at_utc) {
+        Ok(dt) => {
+            let tokyo = dt.with_timezone(&chrono_tz::Asia::Tokyo);
+            tokyo.hour() == 0 && tokyo.minute() == 0 && tokyo.second() == 0
+        }
+        Err(_) => false,
+    }
 }
 
-pub fn create_task(_conn: &Connection, _input: &TaskInput) -> Result<Task, AppError> {
-    todo!()
+pub fn create_task(conn: &Connection, input: &TaskInput) -> Result<Task, AppError> {
+    validate_title(&input.title)?;
+    if let Some(due) = &input.due_at_utc {
+        parse_utc(due)?;
+    }
+    let now = Utc::now().to_rfc3339();
+    let id = uuid::Uuid::new_v4().to_string();
+    let status = input.status.unwrap_or(TaskStatus::Todo);
+    let completed_at = (status == TaskStatus::Completed).then(|| now.clone());
+    conn.execute(
+        "INSERT INTO tasks (id, title, description, due_at, timezone, priority, status, assignee, project_name, meeting_id, linked_file_path, created_at, updated_at, completed_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12, ?13)",
+        rusqlite::params![
+            id,
+            input.title.trim(),
+            input.description,
+            input.due_at_utc,
+            input.timezone,
+            input.priority.as_str(),
+            status.as_str(),
+            input.assignee,
+            input.project_name,
+            input.meeting_id,
+            input.linked_file_path,
+            now,
+            completed_at,
+        ],
+    )?;
+    get_task(conn, &id)
 }
 
-pub fn get_task(_conn: &Connection, _id: &str) -> Result<Task, AppError> {
-    todo!()
+pub fn get_task(conn: &Connection, id: &str) -> Result<Task, AppError> {
+    use rusqlite::OptionalExtension;
+    conn.query_row(
+        &format!("SELECT {SELECT_COLUMNS} FROM tasks WHERE id = ?1"),
+        [id],
+        row_to_task,
+    )
+    .optional()?
+    .ok_or_else(|| AppError::new("TASK_NOT_FOUND", format!("タスクが存在しません: {id}"), false))
 }
 
-pub fn update_task(_conn: &Connection, _id: &str, _patch: &TaskPatch) -> Result<Task, AppError> {
-    todo!()
+pub fn update_task(conn: &Connection, id: &str, patch: &TaskPatch) -> Result<Task, AppError> {
+    let current = get_task(conn, id)?;
+    let title = patch.title.clone().unwrap_or(current.title);
+    validate_title(&title)?;
+    let due_at = patch.due_at_utc.clone().unwrap_or(current.due_at);
+    if let Some(due) = &due_at {
+        parse_utc(due)?;
+    }
+    let status = patch.status.unwrap_or(current.status);
+    let now = Utc::now().to_rfc3339();
+    let completed_at = if status == TaskStatus::Completed {
+        current.completed_at.or(Some(now.clone()))
+    } else {
+        None
+    };
+    conn.execute(
+        "UPDATE tasks SET title = ?2, description = ?3, due_at = ?4, timezone = ?5, priority = ?6, status = ?7,
+           assignee = ?8, project_name = ?9, meeting_id = ?10, linked_file_path = ?11, updated_at = ?12, completed_at = ?13
+         WHERE id = ?1",
+        rusqlite::params![
+            id,
+            title.trim(),
+            patch.description.clone().unwrap_or(current.description),
+            due_at,
+            patch.timezone.clone().unwrap_or(current.timezone),
+            patch.priority.unwrap_or(current.priority).as_str(),
+            status.as_str(),
+            patch.assignee.clone().unwrap_or(current.assignee),
+            patch.project_name.clone().unwrap_or(current.project_name),
+            patch.meeting_id.clone().unwrap_or(current.meeting_id),
+            patch.linked_file_path.clone().unwrap_or(current.linked_file_path),
+            now,
+            completed_at,
+        ],
+    )?;
+    get_task(conn, id)
 }
 
-pub fn delete_task(_conn: &Connection, _id: &str) -> Result<(), AppError> {
-    todo!()
+pub fn delete_task(conn: &Connection, id: &str) -> Result<(), AppError> {
+    let affected = conn.execute("DELETE FROM tasks WHERE id = ?1", [id])?;
+    if affected == 0 {
+        return Err(AppError::new(
+            "TASK_NOT_FOUND",
+            format!("タスクが存在しません: {id}"),
+            false,
+        ));
+    }
+    Ok(())
 }
 
-pub fn complete_task(_conn: &Connection, _id: &str) -> Result<Task, AppError> {
-    todo!()
+pub fn complete_task(conn: &Connection, id: &str) -> Result<Task, AppError> {
+    get_task(conn, id)?;
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE tasks SET status = 'completed', completed_at = ?2, updated_at = ?2 WHERE id = ?1",
+        rusqlite::params![id, now],
+    )?;
+    get_task(conn, id)
 }
 
-pub fn reopen_task(_conn: &Connection, _id: &str) -> Result<Task, AppError> {
-    todo!()
+pub fn reopen_task(conn: &Connection, id: &str) -> Result<Task, AppError> {
+    get_task(conn, id)?;
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        "UPDATE tasks SET status = 'todo', completed_at = NULL, updated_at = ?2 WHERE id = ?1",
+        rusqlite::params![id, now],
+    )?;
+    get_task(conn, id)
+}
+
+fn tokyo_date(due_at_utc: &str) -> Option<chrono::NaiveDate> {
+    DateTime::parse_from_rfc3339(due_at_utc)
+        .ok()
+        .map(|dt| dt.with_timezone(&chrono_tz::Asia::Tokyo).date_naive())
+}
+
+fn matches_date_preset(task: &Task, preset: TaskPreset, now: DateTime<Utc>) -> bool {
+    use chrono::Datelike;
+    let Some(due) = task.due_at.as_deref() else {
+        return false;
+    };
+    let Some(due_date) = tokyo_date(due) else {
+        return false;
+    };
+    let today = now.with_timezone(&chrono_tz::Asia::Tokyo).date_naive();
+    match preset {
+        TaskPreset::Today => due_date == today,
+        TaskPreset::ThisWeek => {
+            let week_start = today - chrono::Days::new(today.weekday().num_days_from_monday() as u64);
+            let week_end = week_start + chrono::Days::new(7);
+            due_date >= week_start && due_date < week_end
+        }
+        TaskPreset::Overdue => {
+            if matches!(task.status, TaskStatus::Completed | TaskStatus::Cancelled) {
+                return false;
+            }
+            if is_date_only_due(due) {
+                due_date < today
+            } else {
+                parse_utc(due).map(|dt| dt < now).unwrap_or(false)
+            }
+        }
+        _ => true,
+    }
 }
 
 /// §12.1の既定順で一覧を返し、日付系プリセットはAsia/Tokyo基準で絞り込む。
 pub fn list_tasks(
-    _conn: &Connection,
-    _filter: &TaskFilter,
-    _now: DateTime<Utc>,
+    conn: &Connection,
+    filter: &TaskFilter,
+    now: DateTime<Utc>,
 ) -> Result<Vec<Task>, AppError> {
-    todo!()
+    let mut conditions: Vec<String> = Vec::new();
+    let mut params: Vec<String> = Vec::new();
+    match filter.preset {
+        Some(TaskPreset::Open) => {
+            conditions.push("status NOT IN ('completed', 'cancelled')".to_string());
+        }
+        Some(TaskPreset::InProgress) => conditions.push("status = 'in_progress'".to_string()),
+        Some(TaskPreset::Completed) => conditions.push("status = 'completed'".to_string()),
+        _ => {}
+    }
+    if let Some(priority) = filter.priority {
+        params.push(priority.as_str().to_string());
+        conditions.push(format!("priority = ?{}", params.len()));
+    }
+    if let Some(project) = &filter.project_name {
+        params.push(project.clone());
+        conditions.push(format!("project_name = ?{}", params.len()));
+    }
+    if let Some(assignee) = &filter.assignee {
+        params.push(assignee.clone());
+        conditions.push(format!("assignee = ?{}", params.len()));
+    }
+    let where_clause = if conditions.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", conditions.join(" AND "))
+    };
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {SELECT_COLUMNS} FROM tasks {where_clause} {DEFAULT_ORDER}"
+    ))?;
+    let tasks = stmt
+        .query_map(rusqlite::params_from_iter(params.iter()), row_to_task)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let tasks = match filter.preset {
+        Some(preset @ (TaskPreset::Today | TaskPreset::ThisWeek | TaskPreset::Overdue)) => tasks
+            .into_iter()
+            .filter(|t| matches_date_preset(t, preset, now))
+            .collect(),
+        _ => tasks,
+    };
+    Ok(tasks)
 }
 
 #[cfg(test)]
