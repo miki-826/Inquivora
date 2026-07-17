@@ -26,6 +26,14 @@ public class NdjsonProtocolTests
     }
 
     [Fact]
+    public void 先頭のbomを無視して解釈できる()
+    {
+        var line = (char)0xFEFF
+            + """{"command":"notify","notificationId":"r1","title":"t","body":"b","launchUri":"inquivora://open?type=task&id=t1"}""";
+        Assert.Equal("r1", NdjsonProtocol.ParseNotifyCommand(line).NotificationId);
+    }
+
+    [Fact]
     public void jsonでない行は拒否する()
     {
         var ex = Assert.Throws<ProtocolException>(() => NdjsonProtocol.ParseNotifyCommand("これはJSONではない"));
