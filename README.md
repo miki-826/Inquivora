@@ -54,7 +54,7 @@ npm run release:windows -- --version 0.1.0
 
 - [x] Phase 1: Windowsアプリ基盤（アプリシェル・SQLite・トレイ常駐・リリースパイプライン）— v0.1.0-alpha.1でGitHub ActionsからのEXE生成・インストール・起動を検証済み。updaterプラグインの登録は自動更新を構成するPhase 7で行う
 - [x] Phase 2: ワークスペース（フォルダ選択・仮想化ファイルツリー・Monaco Editorタブ・800ms自動保存＋アトミック保存・文字コード維持・Markdownプレビュー・外部変更検知と競合ダイアログ・パストラバーサル拒否）— v0.1.0-alpha.2
-- [ ] Phase 3: タスク・カレンダー
+- [x] Phase 3: タスク・カレンダー（タスクCRUD・§12.1の期日順一覧と期限グループ表示・状態/優先度/プロジェクト/担当フィルター・FullCalendar月/週/日・予定CRUDとドラッグ日時変更・時刻付き/日付のみタスクのカレンダー表示・UTC⇔Asia/Tokyo変換）— v0.1.0-alpha.3
 - [ ] Phase 4: 通知
 - [ ] Phase 5: API設定・録音・文字起こし
 - [ ] Phase 6: AI議事録
