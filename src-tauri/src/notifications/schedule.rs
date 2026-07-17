@@ -1,5 +1,8 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, NaiveTime, SecondsFormat, TimeZone, Utc};
+use chrono_tz::Asia::Tokyo;
 use serde::{Deserialize, Serialize};
+
+use crate::database::tasks::is_date_only_due;
 
 /// §19.5 通知設定。app_settingsのキー "notifications" にJSONで保存する。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,37 +31,83 @@ impl Default for NotificationSettings {
 }
 
 /// 欠落・不正なJSONは既定値で補う。
-pub fn parse_settings(_value: Option<serde_json::Value>) -> NotificationSettings {
-    unimplemented!()
+pub fn parse_settings(value: Option<serde_json::Value>) -> NotificationSettings {
+    value
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default()
+}
+
+fn parse_utc(value: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|dt| dt.with_timezone(&Utc))
+}
+
+fn to_rfc3339_z(dt: DateTime<Utc>) -> String {
+    dt.to_rfc3339_opts(SecondsFormat::Secs, true)
+}
+
+fn default_time(settings: &NotificationSettings) -> NaiveTime {
+    NaiveTime::parse_from_str(&settings.default_notify_time, "%H:%M")
+        .unwrap_or_else(|_| NaiveTime::from_hms_opt(9, 0, 0).expect("固定値"))
+}
+
+/// 対象日時のTokyo日付における既定通知時刻をUTCで返す。
+fn notify_at_default_time(anchor: DateTime<Utc>, settings: &NotificationSettings) -> Option<String> {
+    let tokyo = anchor.with_timezone(&Tokyo);
+    let date = tokyo.date_naive();
+    Tokyo
+        .with_ymd_and_hms(date.year(), date.month(), date.day(), 0, 0, 0)
+        .single()
+        .map(|midnight| {
+            let at = midnight + chrono::Duration::seconds(
+                default_time(settings).signed_duration_since(NaiveTime::MIN).num_seconds(),
+            );
+            to_rfc3339_z(at.with_timezone(&Utc))
+        })
 }
 
 /// タスク期日の既定通知時刻（UTC RFC3339）。
 /// 日付のみ期日はその日の既定通知時刻（Tokyo）、時刻付きはリード分前。
 pub fn task_default_notify_at(
-    _due_at_utc: &str,
-    _settings: &NotificationSettings,
+    due_at_utc: &str,
+    settings: &NotificationSettings,
 ) -> Option<String> {
-    unimplemented!()
+    let lead = settings.task_lead_minutes?;
+    let due = parse_utc(due_at_utc)?;
+    if is_date_only_due(due_at_utc) {
+        notify_at_default_time(due, settings)
+    } else {
+        Some(to_rfc3339_z(due - chrono::Duration::minutes(lead)))
+    }
 }
 
 /// 予定開始の既定通知時刻（UTC RFC3339）。
 /// 終日予定は初日の既定通知時刻（Tokyo）、時刻付きはリード分前。
 pub fn event_default_notify_at(
-    _start_at_utc: &str,
-    _all_day: bool,
-    _settings: &NotificationSettings,
+    start_at_utc: &str,
+    all_day: bool,
+    settings: &NotificationSettings,
 ) -> Option<String> {
-    unimplemented!()
+    let lead = settings.event_lead_minutes?;
+    let start = parse_utc(start_at_utc)?;
+    if all_day {
+        notify_at_default_time(start, settings)
+    } else {
+        Some(to_rfc3339_z(start - chrono::Duration::minutes(lead)))
+    }
 }
 
 /// 期日・開始日時の変更差分（秒）。どちらかが不正ならNone。
-pub fn anchor_delta_seconds(_old_utc: &str, _new_utc: &str) -> Option<i64> {
-    unimplemented!()
+pub fn anchor_delta_seconds(old_utc: &str, new_utc: &str) -> Option<i64> {
+    let old = parse_utc(old_utc)?;
+    let new = parse_utc(new_utc)?;
+    Some((new - old).num_seconds())
 }
 
 /// tick間隔からの大幅な遅延をスリープ復帰とみなす（§14.5）。
-pub fn is_resume_gap(_elapsed_secs: u64) -> bool {
-    unimplemented!()
+pub fn is_resume_gap(elapsed_secs: u64) -> bool {
+    elapsed_secs > 90
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -70,26 +119,76 @@ pub struct NotificationPayload {
     pub launch_uri: String,
 }
 
+fn tokyo_date_label(dt: DateTime<chrono_tz::Tz>) -> String {
+    format!("{}月{}日", dt.month(), dt.day())
+}
+
+fn tokyo_time_label(dt: DateTime<chrono_tz::Tz>) -> String {
+    dt.format("%-H:%M").to_string()
+}
+
 /// タスク期限通知（§14.3・§14.4）。
 pub fn task_notification(
-    _reminder_id: &str,
-    _task_id: &str,
-    _task_title: &str,
-    _due_at_utc: Option<&str>,
+    reminder_id: &str,
+    task_id: &str,
+    task_title: &str,
+    due_at_utc: Option<&str>,
 ) -> NotificationPayload {
-    unimplemented!()
+    let body = match due_at_utc.and_then(parse_utc) {
+        Some(due) => {
+            let tokyo = due.with_timezone(&Tokyo);
+            if due_at_utc.is_some_and(is_date_only_due) {
+                format!("「{task_title}」の期日は{}です。", tokyo_date_label(tokyo))
+            } else {
+                format!(
+                    "「{task_title}」の期日は{} {}です。",
+                    tokyo_date_label(tokyo),
+                    tokyo_time_label(tokyo)
+                )
+            }
+        }
+        None => format!("「{task_title}」のリマインダーです。"),
+    };
+    NotificationPayload {
+        notification_id: reminder_id.to_string(),
+        title: "タスク期限".to_string(),
+        body,
+        launch_uri: format!("inquivora://open?type=task&id={task_id}"),
+    }
 }
 
 /// 予定開始通知（§14.3・§14.4）。
 pub fn event_notification(
-    _reminder_id: &str,
-    _event_id: &str,
-    _event_title: &str,
-    _start_at_utc: &str,
-    _all_day: bool,
-    _now: DateTime<Utc>,
+    reminder_id: &str,
+    event_id: &str,
+    event_title: &str,
+    start_at_utc: &str,
+    all_day: bool,
+    now: DateTime<Utc>,
 ) -> NotificationPayload {
-    unimplemented!()
+    let body = match parse_utc(start_at_utc) {
+        Some(start) => {
+            let tokyo = start.with_timezone(&Tokyo);
+            if all_day {
+                format!("「{event_title}」は{}の終日予定です。", tokyo_date_label(tokyo))
+            } else if tokyo.date_naive() == now.with_timezone(&Tokyo).date_naive() {
+                format!("「{event_title}」が{}から始まります。", tokyo_time_label(tokyo))
+            } else {
+                format!(
+                    "「{event_title}」が{} {}から始まります。",
+                    tokyo_date_label(tokyo),
+                    tokyo_time_label(tokyo)
+                )
+            }
+        }
+        None => format!("「{event_title}」のリマインダーです。"),
+    };
+    NotificationPayload {
+        notification_id: reminder_id.to_string(),
+        title: "予定開始".to_string(),
+        body,
+        launch_uri: format!("inquivora://open?type=event&id={event_id}"),
+    }
 }
 
 #[cfg(test)]

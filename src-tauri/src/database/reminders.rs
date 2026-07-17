@@ -1,4 +1,5 @@
-use rusqlite::Connection;
+use chrono::{DateTime, SecondsFormat, Utc};
+use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
@@ -41,82 +42,251 @@ pub struct ReminderPatch {
     pub notify_at_utc: Option<String>,
 }
 
-pub fn create_reminder(_conn: &Connection, _input: &ReminderInput) -> Result<Reminder, AppError> {
-    unimplemented!()
+const SELECT_COLUMNS: &str =
+    "id, task_id, event_id, notify_at, timezone, status, sent_at, created_at, updated_at";
+
+fn row_to_reminder(row: &rusqlite::Row<'_>) -> rusqlite::Result<Reminder> {
+    Ok(Reminder {
+        id: row.get(0)?,
+        task_id: row.get(1)?,
+        event_id: row.get(2)?,
+        notify_at: row.get(3)?,
+        timezone: row.get(4)?,
+        status: row.get(5)?,
+        sent_at: row.get(6)?,
+        created_at: row.get(7)?,
+        updated_at: row.get(8)?,
+    })
+}
+
+fn validation_error(message: impl Into<String>) -> AppError {
+    AppError::new("VALIDATION_ERROR", message, false)
+}
+
+fn not_found(id: &str) -> AppError {
+    AppError::new(
+        "REMINDER_NOT_FOUND",
+        format!("リマインダーが存在しません: {id}"),
+        false,
+    )
+}
+
+/// RFC3339をUTCのZ表記へ正規化する。
+fn normalize_utc(value: &str) -> Result<String, AppError> {
+    DateTime::parse_from_rfc3339(value)
+        .map(|dt| dt.with_timezone(&Utc).to_rfc3339_opts(SecondsFormat::Secs, true))
+        .map_err(|_| validation_error(format!("通知時刻はRFC3339形式で指定してください: {value}")))
+}
+
+fn validate_target(task_id: Option<&str>, event_id: Option<&str>) -> Result<(), AppError> {
+    match (task_id, event_id) {
+        (Some(_), None) | (None, Some(_)) => Ok(()),
+        _ => Err(validation_error(
+            "タスクまたは予定のどちらか一方を指定してください",
+        )),
+    }
+}
+
+fn is_unique_violation(err: &rusqlite::Error) -> bool {
+    matches!(
+        err,
+        rusqlite::Error::SqliteFailure(e, _)
+            if e.code == rusqlite::ErrorCode::ConstraintViolation
+    )
+}
+
+fn insert_reminder(conn: &Connection, input: &ReminderInput) -> Result<Option<Reminder>, AppError> {
+    validate_target(input.task_id.as_deref(), input.event_id.as_deref())?;
+    let notify_at = normalize_utc(&input.notify_at_utc)?;
+    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    let id = uuid::Uuid::new_v4().to_string();
+    let result = conn.execute(
+        "INSERT INTO reminders (id, task_id, event_id, notify_at, timezone, status, sent_at, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, 'scheduled', NULL, ?6, ?6)",
+        rusqlite::params![id, input.task_id, input.event_id, notify_at, input.timezone, now],
+    );
+    match result {
+        Ok(_) => Ok(Some(get_reminder(conn, &id)?)),
+        Err(err) if is_unique_violation(&err) => Ok(None),
+        Err(err) => Err(err.into()),
+    }
+}
+
+pub fn create_reminder(conn: &Connection, input: &ReminderInput) -> Result<Reminder, AppError> {
+    insert_reminder(conn, input)?
+        .ok_or_else(|| validation_error("同じ対象・同じ時刻の通知が既に存在します"))
 }
 
 /// 同一対象・同一時刻の重複はエラーにせずNoneを返す（自動作成用、§14.6）。
 pub fn create_reminder_if_absent(
-    _conn: &Connection,
-    _input: &ReminderInput,
+    conn: &Connection,
+    input: &ReminderInput,
 ) -> Result<Option<Reminder>, AppError> {
-    unimplemented!()
+    insert_reminder(conn, input)
 }
 
-pub fn get_reminder(_conn: &Connection, _id: &str) -> Result<Reminder, AppError> {
-    unimplemented!()
+pub fn get_reminder(conn: &Connection, id: &str) -> Result<Reminder, AppError> {
+    conn.query_row(
+        &format!("SELECT {SELECT_COLUMNS} FROM reminders WHERE id = ?1"),
+        [id],
+        row_to_reminder,
+    )
+    .optional()?
+    .ok_or_else(|| not_found(id))
 }
 
 pub fn update_reminder(
-    _conn: &Connection,
-    _id: &str,
-    _patch: &ReminderPatch,
+    conn: &Connection,
+    id: &str,
+    patch: &ReminderPatch,
 ) -> Result<Reminder, AppError> {
-    unimplemented!()
+    let current = get_reminder(conn, id)?;
+    let notify_at = match &patch.notify_at_utc {
+        Some(value) => normalize_utc(value)?,
+        None => current.notify_at,
+    };
+    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    conn.execute(
+        "UPDATE reminders SET notify_at = ?2, status = 'scheduled', sent_at = NULL, updated_at = ?3
+         WHERE id = ?1",
+        rusqlite::params![id, notify_at, now],
+    )?;
+    get_reminder(conn, id)
 }
 
-pub fn delete_reminder(_conn: &Connection, _id: &str) -> Result<(), AppError> {
-    unimplemented!()
+pub fn delete_reminder(conn: &Connection, id: &str) -> Result<(), AppError> {
+    let affected = conn.execute("DELETE FROM reminders WHERE id = ?1", [id])?;
+    if affected == 0 {
+        return Err(not_found(id));
+    }
+    Ok(())
 }
 
-pub fn list_upcoming(_conn: &Connection, _limit: usize) -> Result<Vec<Reminder>, AppError> {
-    unimplemented!()
+pub fn list_upcoming(conn: &Connection, limit: usize) -> Result<Vec<Reminder>, AppError> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {SELECT_COLUMNS} FROM reminders WHERE status = 'scheduled'
+         ORDER BY datetime(notify_at) ASC LIMIT ?1"
+    ))?;
+    let list = stmt
+        .query_map([limit as i64], row_to_reminder)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(list)
 }
 
 pub fn list_for_target(
-    _conn: &Connection,
-    _task_id: Option<&str>,
-    _event_id: Option<&str>,
+    conn: &Connection,
+    task_id: Option<&str>,
+    event_id: Option<&str>,
 ) -> Result<Vec<Reminder>, AppError> {
-    unimplemented!()
+    validate_target(task_id, event_id)?;
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {SELECT_COLUMNS} FROM reminders
+         WHERE (?1 IS NOT NULL AND task_id = ?1) OR (?2 IS NOT NULL AND event_id = ?2)
+         ORDER BY datetime(notify_at) ASC"
+    ))?;
+    let list = stmt
+        .query_map(rusqlite::params![task_id, event_id], row_to_reminder)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(list)
 }
 
-pub fn due_reminders(_conn: &Connection, _now_utc: &str) -> Result<Vec<Reminder>, AppError> {
-    unimplemented!()
+pub fn due_reminders(conn: &Connection, now_utc: &str) -> Result<Vec<Reminder>, AppError> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {SELECT_COLUMNS} FROM reminders
+         WHERE status = 'scheduled' AND datetime(notify_at) <= datetime(?1)
+         ORDER BY datetime(notify_at) ASC"
+    ))?;
+    let list = stmt
+        .query_map([now_utc], row_to_reminder)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(list)
 }
 
-pub fn mark_sent(_conn: &Connection, _id: &str, _now_utc: &str) -> Result<(), AppError> {
-    unimplemented!()
+pub fn mark_sent(conn: &Connection, id: &str, now_utc: &str) -> Result<(), AppError> {
+    let affected = conn.execute(
+        "UPDATE reminders SET status = 'sent', sent_at = ?2, updated_at = ?2 WHERE id = ?1",
+        rusqlite::params![id, now_utc],
+    )?;
+    if affected == 0 {
+        return Err(not_found(id));
+    }
+    Ok(())
+}
+
+fn set_status_scheduled(
+    conn: &Connection,
+    task_id: Option<&str>,
+    event_id: Option<&str>,
+    status: &str,
+) -> Result<usize, AppError> {
+    validate_target(task_id, event_id)?;
+    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    let affected = conn.execute(
+        "UPDATE reminders SET status = ?3, updated_at = ?4
+         WHERE status = 'scheduled'
+           AND ((?1 IS NOT NULL AND task_id = ?1) OR (?2 IS NOT NULL AND event_id = ?2))",
+        rusqlite::params![task_id, event_id, status, now],
+    )?;
+    Ok(affected)
 }
 
 pub fn cancel_scheduled(
-    _conn: &Connection,
-    _task_id: Option<&str>,
-    _event_id: Option<&str>,
+    conn: &Connection,
+    task_id: Option<&str>,
+    event_id: Option<&str>,
 ) -> Result<usize, AppError> {
-    unimplemented!()
+    set_status_scheduled(conn, task_id, event_id, "cancelled")
 }
 
 pub fn shift_scheduled(
-    _conn: &Connection,
-    _task_id: Option<&str>,
-    _event_id: Option<&str>,
-    _delta_seconds: i64,
+    conn: &Connection,
+    task_id: Option<&str>,
+    event_id: Option<&str>,
+    delta_seconds: i64,
 ) -> Result<usize, AppError> {
-    unimplemented!()
+    let targets: Vec<Reminder> = list_for_target(conn, task_id, event_id)?
+        .into_iter()
+        .filter(|r| r.status == "scheduled")
+        .collect();
+    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    let mut affected = 0;
+    for reminder in targets {
+        let Ok(current) = DateTime::parse_from_rfc3339(&reminder.notify_at) else {
+            continue;
+        };
+        let shifted = (current.with_timezone(&Utc) + chrono::Duration::seconds(delta_seconds))
+            .to_rfc3339_opts(SecondsFormat::Secs, true);
+        affected += conn.execute(
+            "UPDATE reminders SET notify_at = ?2, updated_at = ?3 WHERE id = ?1",
+            rusqlite::params![reminder.id, shifted, now],
+        )?;
+    }
+    Ok(affected)
 }
 
 pub fn count_for_target(
-    _conn: &Connection,
-    _task_id: Option<&str>,
-    _event_id: Option<&str>,
+    conn: &Connection,
+    task_id: Option<&str>,
+    event_id: Option<&str>,
 ) -> Result<i64, AppError> {
-    unimplemented!()
+    validate_target(task_id, event_id)?;
+    let count = conn.query_row(
+        "SELECT COUNT(*) FROM reminders
+         WHERE (?1 IS NOT NULL AND task_id = ?1) OR (?2 IS NOT NULL AND event_id = ?2)",
+        rusqlite::params![task_id, event_id],
+        |row| row.get(0),
+    )?;
+    Ok(count)
 }
 
 /// 通知予定時刻から24時間以上経過したscheduledをexpiredにする。
-pub fn expire_stale(_conn: &Connection, _now_utc: &str) -> Result<usize, AppError> {
-    unimplemented!()
+pub fn expire_stale(conn: &Connection, now_utc: &str) -> Result<usize, AppError> {
+    let affected = conn.execute(
+        "UPDATE reminders SET status = 'expired', updated_at = ?1
+         WHERE status = 'scheduled' AND datetime(notify_at) <= datetime(?1, '-24 hours')",
+        [now_utc],
+    )?;
+    Ok(affected)
 }
 
 #[cfg(test)]

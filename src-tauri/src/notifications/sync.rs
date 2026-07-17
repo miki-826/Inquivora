@@ -2,9 +2,75 @@ use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 
 use crate::database::events::EventRecord;
-use crate::database::tasks::Task;
+use crate::database::reminders::{self, ReminderInput};
+use crate::database::tasks::{Task, TaskStatus};
 use crate::error::AppError;
-use crate::notifications::schedule::NotificationSettings;
+use crate::notifications::schedule::{
+    anchor_delta_seconds, event_default_notify_at, task_default_notify_at, NotificationSettings,
+};
+
+fn is_future(notify_at_utc: &str, now: DateTime<Utc>) -> bool {
+    DateTime::parse_from_rfc3339(notify_at_utc)
+        .map(|dt| dt.with_timezone(&Utc) > now)
+        .unwrap_or(false)
+}
+
+fn create_default(
+    conn: &Connection,
+    task_id: Option<&str>,
+    event_id: Option<&str>,
+    notify_at: Option<String>,
+    now: DateTime<Utc>,
+) -> Result<(), AppError> {
+    let Some(notify_at) = notify_at else {
+        return Ok(());
+    };
+    if !is_future(&notify_at, now) {
+        return Ok(());
+    }
+    reminders::create_reminder_if_absent(
+        conn,
+        &ReminderInput {
+            task_id: task_id.map(str::to_string),
+            event_id: event_id.map(str::to_string),
+            notify_at_utc: notify_at,
+            timezone: "Asia/Tokyo".to_string(),
+        },
+    )?;
+    Ok(())
+}
+
+fn sync_anchor_change(
+    conn: &Connection,
+    task_id: Option<&str>,
+    event_id: Option<&str>,
+    old_anchor: Option<&str>,
+    new_anchor: Option<&str>,
+    default_notify_at: Option<String>,
+    now: DateTime<Utc>,
+) -> Result<(), AppError> {
+    match (old_anchor, new_anchor) {
+        (_, None) => {
+            if old_anchor.is_some() {
+                reminders::cancel_scheduled(conn, task_id, event_id)?;
+            }
+        }
+        (None, Some(_)) => {
+            if reminders::count_for_target(conn, task_id, event_id)? == 0 {
+                create_default(conn, task_id, event_id, default_notify_at, now)?;
+            }
+        }
+        (Some(old), Some(new)) if old != new => {
+            if reminders::count_for_target(conn, task_id, event_id)? == 0 {
+                create_default(conn, task_id, event_id, default_notify_at, now)?;
+            } else if let Some(delta) = anchor_delta_seconds(old, new) {
+                reminders::shift_scheduled(conn, task_id, event_id, delta)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
 
 /// タスク保存後のリマインダー同期（§14.5 タスク更新時の再計算）。
 /// - 完了・中止: scheduledをcancelled
@@ -12,24 +78,67 @@ use crate::notifications::schedule::NotificationSettings;
 /// - 期日削除: scheduledをcancelled
 /// - 新規または期日追加: 既定リマインダーを作成（過去時刻なら作らない）
 pub fn sync_after_task_saved(
-    _conn: &Connection,
-    _old: Option<&Task>,
-    _task: &Task,
-    _settings: &NotificationSettings,
-    _now: DateTime<Utc>,
+    conn: &Connection,
+    old: Option<&Task>,
+    task: &Task,
+    settings: &NotificationSettings,
+    now: DateTime<Utc>,
 ) -> Result<(), AppError> {
-    unimplemented!()
+    if matches!(task.status, TaskStatus::Completed | TaskStatus::Cancelled) {
+        reminders::cancel_scheduled(conn, Some(&task.id), None)?;
+        return Ok(());
+    }
+    if !settings.enabled {
+        return Ok(());
+    }
+    let default_notify_at = task
+        .due_at
+        .as_deref()
+        .and_then(|due| task_default_notify_at(due, settings));
+    match old {
+        None => {
+            if task.due_at.is_some() {
+                create_default(conn, Some(&task.id), None, default_notify_at, now)?;
+            }
+        }
+        Some(old) => sync_anchor_change(
+            conn,
+            Some(&task.id),
+            None,
+            old.due_at.as_deref(),
+            task.due_at.as_deref(),
+            default_notify_at,
+            now,
+        )?,
+    }
+    Ok(())
 }
 
 /// 予定保存後のリマインダー同期（§14.5 予定更新時の再計算）。
 pub fn sync_after_event_saved(
-    _conn: &Connection,
-    _old: Option<&EventRecord>,
-    _event: &EventRecord,
-    _settings: &NotificationSettings,
-    _now: DateTime<Utc>,
+    conn: &Connection,
+    old: Option<&EventRecord>,
+    event: &EventRecord,
+    settings: &NotificationSettings,
+    now: DateTime<Utc>,
 ) -> Result<(), AppError> {
-    unimplemented!()
+    if !settings.enabled {
+        return Ok(());
+    }
+    let default_notify_at = event_default_notify_at(&event.start_at, event.all_day, settings);
+    match old {
+        None => create_default(conn, None, Some(&event.id), default_notify_at, now)?,
+        Some(old) => sync_anchor_change(
+            conn,
+            None,
+            Some(&event.id),
+            Some(old.start_at.as_str()),
+            Some(event.start_at.as_str()),
+            default_notify_at,
+            now,
+        )?,
+    }
+    Ok(())
 }
 
 #[cfg(test)]
