@@ -12,6 +12,7 @@ sidecars/**/bin/
 sidecars/**/obj/
 native/**/bin/
 native/**/obj/
+src-tauri/binaries/
 
 # Local data and secrets
 .env
