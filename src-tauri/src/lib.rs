@@ -61,6 +61,17 @@ pub fn run() {
             commands::files::file_read_base64,
             commands::files::tabs_save,
             commands::files::tabs_load,
+            commands::tasks::task_create,
+            commands::tasks::task_update,
+            commands::tasks::task_delete,
+            commands::tasks::task_get,
+            commands::tasks::task_list,
+            commands::tasks::task_complete,
+            commands::tasks::task_reopen,
+            commands::events::event_create,
+            commands::events::event_update,
+            commands::events::event_delete,
+            commands::events::event_get_range,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
