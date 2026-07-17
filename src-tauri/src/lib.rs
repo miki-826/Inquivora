@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod database;
 pub mod error;
+pub mod notifications;
 pub mod tray;
 pub mod workspace;
 
