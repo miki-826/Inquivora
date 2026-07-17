@@ -69,6 +69,13 @@ describe("scanForSecretLikeStrings", () => {
     const source = 'const apiKey = await invoke("api_provider_has_secret", { id });';
     expect(scanForSecretLikeStrings(source)).toEqual([]);
   });
+
+  it("単語の途中にsk-を含むCSSクラス名は検出しない", () => {
+    const css = ".task-filter__preset--active { color: red; }";
+    const tsx = 'className="task-filter__preset task-filter__preset--active"';
+    expect(scanForSecretLikeStrings(css)).toEqual([]);
+    expect(scanForSecretLikeStrings(tsx)).toEqual([]);
+  });
 });
 
 describe("extractCargoVersion", () => {
