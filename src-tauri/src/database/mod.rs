@@ -1,13 +1,25 @@
+pub mod events;
 pub mod settings;
 pub mod tabs;
+pub mod tasks;
 pub mod workspaces;
 
 use std::path::Path;
 
 use chrono::Utc;
 use rusqlite::Connection;
+use serde::{Deserialize, Deserializer};
 
 use crate::error::AppError;
+
+/// パッチ用: フィールド欠落(None)と明示的なnull(Some(None))を区別して復元する。
+pub(crate) fn double_option<'de, T, D>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    Deserialize::deserialize(deserializer).map(Some)
+}
 
 pub const MIGRATIONS: &[(i64, &str)] = &[(1, include_str!("../../migrations/001_init.sql"))];
 
