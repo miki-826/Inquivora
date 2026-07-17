@@ -1,3 +1,5 @@
+import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
+
 export type TaskPriority = "high" | "medium" | "low";
 export type TaskStatus = "todo" | "in_progress" | "on_hold" | "completed" | "cancelled";
 
@@ -69,35 +71,94 @@ export const STATUS_LABELS: Record<TaskStatus, string> = {
   cancelled: "中止",
 };
 
+export function tokyoDateString(instant: Date | string): string {
+  return formatInTimeZone(instant, TOKYO_TZ, "yyyy-MM-dd");
+}
+
+function dayNumber(dateString: string): number {
+  return Date.parse(`${dateString}T00:00:00Z`) / 86_400_000;
+}
+
+function mondayStartOffset(dateString: string): number {
+  const weekday = new Date(`${dateString}T00:00:00Z`).getUTCDay();
+  return (weekday + 6) % 7;
+}
+
 /** 期日がAsia/Tokyoの0時ちょうど（=日付のみ）かを判定する（§13.4） */
-export function isDateOnlyDue(_dueAtUtc: string): boolean {
-  throw new Error("未実装");
+export function isDateOnlyDue(dueAtUtc: string): boolean {
+  return formatInTimeZone(dueAtUtc, TOKYO_TZ, "HH:mm:ss") === "00:00:00";
 }
 
 /** タスクの表示グループを判定する（§12.1の表示順） */
-export function dueGroupOf(_task: Task, _now: Date): DueGroup {
-  throw new Error("未実装");
+export function dueGroupOf(task: Task, now: Date): DueGroup {
+  if (task.status === "completed") return "completed";
+  if (!task.dueAtUtc) return "none";
+  const today = dayNumber(tokyoDateString(now));
+  const dueDay = dayNumber(tokyoDateString(task.dueAtUtc));
+  if (isDateOnlyDue(task.dueAtUtc)) {
+    if (dueDay < today) return "overdue";
+  } else if (Date.parse(task.dueAtUtc) < now.getTime()) {
+    return "overdue";
+  }
+  if (dueDay === today) return "today";
+  if (dueDay === today + 1) return "tomorrow";
+  const weekStart = today - mondayStartOffset(tokyoDateString(now));
+  if (dueDay >= weekStart && dueDay < weekStart + 7) return "thisWeek";
+  return "later";
 }
+
+const GROUP_ORDER: DueGroup[] = [
+  "overdue",
+  "today",
+  "tomorrow",
+  "thisWeek",
+  "later",
+  "none",
+  "completed",
+];
 
 /** §12.1の表示順でグループ化する（空グループは除く） */
 export function groupTasks(
-  _tasks: Task[],
-  _now: Date,
+  tasks: Task[],
+  now: Date,
 ): { group: DueGroup; label: string; tasks: Task[] }[] {
-  throw new Error("未実装");
+  const byGroup = new Map<DueGroup, Task[]>();
+  for (const task of tasks) {
+    const group = dueGroupOf(task, now);
+    const list = byGroup.get(group);
+    if (list) {
+      list.push(task);
+    } else {
+      byGroup.set(group, [task]);
+    }
+  }
+  return GROUP_ORDER.filter((group) => byGroup.has(group)).map((group) => ({
+    group,
+    label: DUE_GROUP_LABELS[group],
+    tasks: byGroup.get(group) ?? [],
+  }));
 }
 
 /** 期日ラベル（Asia/Tokyo表示、日付のみは時刻を省く） */
-export function formatDueLabel(_dueAtUtc: string, _now: Date): string {
-  throw new Error("未実装");
+export function formatDueLabel(dueAtUtc: string, now: Date): string {
+  const sameYear =
+    formatInTimeZone(dueAtUtc, TOKYO_TZ, "yyyy") === formatInTimeZone(now, TOKYO_TZ, "yyyy");
+  const datePart = formatInTimeZone(dueAtUtc, TOKYO_TZ, sameYear ? "M月d日" : "yyyy年M月d日");
+  if (isDateOnlyDue(dueAtUtc)) return datePart;
+  return `${datePart} ${formatInTimeZone(dueAtUtc, TOKYO_TZ, "HH:mm")}`;
 }
 
 /** フォームの日付・時刻入力からUTC期日を作る（時刻空はTokyo 0時=日付のみ） */
-export function buildDueAtUtc(_date: string, _time: string): string | null {
-  throw new Error("未実装");
+export function buildDueAtUtc(date: string, time: string): string | null {
+  if (!date) return null;
+  return fromZonedTime(`${date}T${time || "00:00"}:00`, TOKYO_TZ).toISOString();
 }
 
 /** UTC期日をフォーム入力用の日付・時刻へ分解する */
-export function splitDueAtUtc(_dueAtUtc: string | null): { date: string; time: string } {
-  throw new Error("未実装");
+export function splitDueAtUtc(dueAtUtc: string | null): { date: string; time: string } {
+  if (!dueAtUtc) return { date: "", time: "" };
+  return {
+    date: tokyoDateString(dueAtUtc),
+    time: isDateOnlyDue(dueAtUtc) ? "" : formatInTimeZone(dueAtUtc, TOKYO_TZ, "HH:mm"),
+  };
 }
