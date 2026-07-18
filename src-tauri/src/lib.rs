@@ -125,6 +125,10 @@ pub fn run() {
             commands::whisper::whisper_model_select,
             commands::whisper::whisper_model_download,
             commands::whisper::whisper_model_delete,
+            commands::discord::discord_webhook_set,
+            commands::discord::discord_webhook_has,
+            commands::discord::discord_webhook_delete,
+            commands::discord::discord_webhook_test,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,3 +1,4 @@
+pub mod discord;
 pub mod events;
 pub mod files;
 pub mod meetings;

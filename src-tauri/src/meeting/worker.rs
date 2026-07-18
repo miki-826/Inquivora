@@ -8,6 +8,7 @@ use crate::api::http::{self, TranscribeRequest};
 use crate::database::providers::{self, ApiProviderProfile, UsageInput};
 use crate::database::{jobs, meetings};
 use crate::error::AppError;
+use crate::discord;
 use crate::meeting::{dedupe, markdown};
 use crate::whisper;
 use crate::DbState;
@@ -86,10 +87,31 @@ async fn process_next(app: &AppHandle) -> Result<bool, AppError> {
         }
     };
     match result {
-        Ok(text) => finish_with_success(app, &context, text)?,
+        Ok(text) => {
+            if let Some(embed) = finish_with_success(app, &context, text)? {
+                post_segment_to_discord(app.clone(), embed);
+            }
+        }
         Err(err) => finish_with_error(app, &context, err)?,
     }
     Ok(true)
+}
+
+/// Discordへのリアルタイム投稿。失敗しても文字起こし処理は継続する。
+fn post_segment_to_discord(app: AppHandle, embed: serde_json::Value) {
+    tauri::async_runtime::spawn(async move {
+        let url = match credentials::get_secret(&app, discord::WEBHOOK_CREDENTIAL_ID).await {
+            Ok(Some(url)) => url,
+            Ok(None) => return,
+            Err(err) => {
+                eprintln!("Discord Webhookの取得に失敗: {}", err.message);
+                return;
+            }
+        };
+        if let Err(err) = discord::post_webhook(&url, &[embed]).await {
+            eprintln!("Discordへのセグメント投稿に失敗: {}", err.message);
+        }
+    });
 }
 
 fn lock_error(e: impl std::fmt::Display) -> AppError {
@@ -194,10 +216,15 @@ fn record_usage(
     )
 }
 
-fn finish_with_success(app: &AppHandle, context: &JobContext, text: String) -> Result<(), AppError> {
+fn finish_with_success(
+    app: &AppHandle,
+    context: &JobContext,
+    text: String,
+) -> Result<Option<serde_json::Value>, AppError> {
     let state = app.state::<DbState>();
     let conn = state.0.lock().map_err(lock_error)?;
     record_usage(&conn, context, "success", None)?;
+    let mut discord_embed = None;
     let trimmed = text.trim();
     if !trimmed.is_empty() {
         let previous = meetings::last_segment_text(&conn, &context.meeting.id, &context.chunk.source)?;
@@ -228,9 +255,19 @@ fn finish_with_success(app: &AppHandle, context: &JobContext, text: String) -> R
                     "segment": segment,
                 }),
             );
+            let settings = discord::load_settings(&conn)?;
+            if settings.enabled && settings.realtime {
+                discord_embed = Some(discord::segment_embed(
+                    &context.meeting.title,
+                    &time_label,
+                    speaker,
+                    &deduped,
+                ));
+            }
         }
     }
-    jobs::complete_job(&conn, &context.job_id)
+    jobs::complete_job(&conn, &context.job_id)?;
+    Ok(discord_embed)
 }
 
 fn finish_with_error(app: &AppHandle, context: &JobContext, err: AppError) -> Result<(), AppError> {

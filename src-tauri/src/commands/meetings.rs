@@ -110,7 +110,49 @@ pub fn meeting_stop(app: AppHandle, meeting_id: String) -> Result<Meeting, AppEr
     let state = app.state::<DbState>();
     let conn = state.0.lock().map_err(lock_error)?;
     meetings::end_meeting(&conn, &meeting_id)?;
-    meetings::get_meeting(&conn, &meeting_id)
+    let meeting = meetings::get_meeting(&conn, &meeting_id)?;
+    let settings = crate::discord::load_settings(&conn)?;
+    if settings.enabled && settings.summary {
+        let segments = meetings::list_segments(&conn, &meeting_id)?;
+        if !segments.is_empty() {
+            let full_text = segments
+                .iter()
+                .map(|s| {
+                    let time = crate::meeting::markdown::segment_time_label(
+                        &meeting.started_at,
+                        s.start_ms,
+                    );
+                    format!("**{} {}** {}", time, s.speaker_label, s.text)
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            let embeds = crate::discord::summary_embeds(&meeting.title, &full_text);
+            post_summary_to_discord(app.clone(), embeds);
+        }
+    }
+    Ok(meeting)
+}
+
+/// 会議終了時のまとめ投稿。停止処理をブロックせず、失敗してもログに留める。
+fn post_summary_to_discord(app: AppHandle, embeds: Vec<serde_json::Value>) {
+    tauri::async_runtime::spawn(async move {
+        let url = match crate::api::credentials::get_secret(
+            &app,
+            crate::discord::WEBHOOK_CREDENTIAL_ID,
+        )
+        .await
+        {
+            Ok(Some(url)) => url,
+            Ok(None) => return,
+            Err(err) => {
+                eprintln!("Discord Webhookの取得に失敗: {}", err.message);
+                return;
+            }
+        };
+        if let Err(err) = crate::discord::post_webhook(&url, &embeds).await {
+            eprintln!("Discordへのまとめ投稿に失敗: {}", err.message);
+        }
+    });
 }
 
 #[tauri::command]
