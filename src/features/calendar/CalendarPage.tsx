@@ -5,9 +5,9 @@ import interactionPlugin from "@fullcalendar/interaction";
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
-import type { EventPatch } from "../../services/events";
+import { getEvent, type EventPatch } from "../../services/events";
 import { updateTask } from "../../services/tasks";
 import { useCalendarStore } from "../../stores/useCalendarStore";
 import { TOKYO_TZ } from "../tasks/taskModel";
@@ -55,7 +55,29 @@ export function CalendarPage() {
   const loadRange = useCalendarStore((s) => s.loadRange);
   const reload = useCalendarStore((s) => s.reload);
   const updateEvent = useCalendarStore((s) => s.updateEvent);
+  const focusEventId = useCalendarStore((s) => s.focusEventId);
+  const setFocusEventId = useCalendarStore((s) => s.setFocusEventId);
   const [selection, setSelection] = useState<CalendarSelection>(null);
+  const calendarRef = useRef<FullCalendar | null>(null);
+
+  // 通知クリック（§14.3）: 対象予定の日付へ移動して右パネルで選択する
+  useEffect(() => {
+    if (!focusEventId) return;
+    let active = true;
+    void getEvent(focusEventId)
+      .then((event) => {
+        if (!active) return;
+        calendarRef.current?.getApi().gotoDate(event.startAtUtc);
+        setSelection({ type: "event", id: event.id });
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (active) setFocusEventId(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [focusEventId, setFocusEventId]);
 
   const applyEventChange = async (info: EventChangeArg) => {
     const { kind, sourceId } = info.event.extendedProps as {
@@ -102,6 +124,7 @@ export function CalendarPage() {
           </p>
         )}
         <FullCalendar
+          ref={calendarRef}
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
           initialView="dayGridMonth"
           locale={jaLocale}

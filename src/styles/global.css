@@ -1177,3 +1177,161 @@ button {
 .cal-task--completed .fc-event-title {
   text-decoration: line-through;
 }
+
+.reminder-section {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border);
+}
+
+.reminder-section__title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  margin-bottom: 6px;
+}
+
+.reminder-section__empty {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin: 4px 0;
+}
+
+.reminder-section__error {
+  font-size: 12px;
+  color: var(--color-danger);
+  margin: 4px 0;
+}
+
+.reminder-section__list {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reminder-section__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.reminder-section__time--inactive {
+  color: var(--color-text-muted);
+  text-decoration: line-through;
+}
+
+.reminder-section__status {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  background: var(--color-surface-subtle);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+
+.reminder-section__delete {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 2px;
+}
+
+.reminder-section__delete:hover {
+  color: var(--color-danger);
+}
+
+.reminder-section__add {
+  display: flex;
+  gap: 6px;
+}
+
+.reminder-section__add input {
+  flex: 1;
+  min-width: 0;
+}
+
+.event-panel__edit {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-page {
+  padding: 20px 24px;
+  overflow-y: auto;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 560px;
+}
+
+.settings-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 16px 18px;
+}
+
+.settings-section__title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-bottom: 12px;
+}
+
+.settings-field input[type="time"],
+.settings-field input[type="number"] {
+  max-width: 180px;
+}
+
+.settings-field--toggle {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text);
+}
+
+.settings-note {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin: 4px 0 12px;
+}
+
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-actions__ok {
+  font-size: 12px;
+  color: var(--color-success);
+}
+
+.settings-actions__error {
+  font-size: 12px;
+  color: var(--color-danger);
+}
+
+.settings-nav-note {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}

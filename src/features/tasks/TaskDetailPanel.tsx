@@ -2,6 +2,7 @@ import { formatInTimeZone } from "date-fns-tz";
 import { Copy, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { PanePlaceholder } from "../../components/common/PanePlaceholder";
+import { ReminderSection } from "../notifications/ReminderSection";
 import { useTaskStore } from "../../stores/useTaskStore";
 import {
   PRIORITY_LABELS,
@@ -125,6 +126,7 @@ function DetailForm({ task }: { task: Task }) {
           onBlur={(e) => commitText("description", e.target.value)}
         />
       </label>
+      <ReminderSection taskId={task.id} />
       {task.linkedFilePath && (
         <p className="task-detail__meta">関連ファイル: {task.linkedFilePath}</p>
       )}

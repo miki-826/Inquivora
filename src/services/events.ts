@@ -38,6 +38,10 @@ export function deleteEvent(id: string): Promise<void> {
   return invoke("event_delete", { id });
 }
 
+export function getEvent(id: string): Promise<EventRecord> {
+  return invoke("event_get", { id });
+}
+
 export function getEventsInRange(startUtc: string, endUtc: string): Promise<EventRecord[]> {
   return invoke("event_get_range", { startUtc, endUtc });
 }

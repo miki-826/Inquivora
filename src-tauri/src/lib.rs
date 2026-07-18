@@ -8,20 +8,10 @@ pub mod workspace;
 use std::sync::Mutex;
 
 use rusqlite::Connection;
-use tauri::{Emitter, Manager, WindowEvent};
+use tauri::{Manager, WindowEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
 
 pub struct DbState(pub Mutex<Connection>);
-
-/// §14.3 通知クリック等のinquivora:// URLをフロントエンドへ通知し、ウィンドウを前面化する。
-fn handle_deep_link_urls(app: &tauri::AppHandle, urls: Vec<tauri::Url>) {
-    tray::show_main_window(app);
-    for url in urls {
-        if url.scheme() == "inquivora" {
-            let _ = app.emit("deeplink:open", url.to_string());
-        }
-    }
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -47,9 +37,10 @@ pub fn run() {
             tray::setup_tray(app.handle())?;
             #[cfg(debug_assertions)]
             app.deep_link().register_all()?;
+            // §14.3 通知クリック時の前面化。画面遷移はフロント側のonOpenUrlが担う
             let handle = app.handle().clone();
-            app.deep_link().on_open_url(move |event| {
-                handle_deep_link_urls(&handle, event.urls());
+            app.deep_link().on_open_url(move |_event| {
+                tray::show_main_window(&handle);
             });
             notifications::scheduler::spawn(app.handle().clone());
             Ok(())

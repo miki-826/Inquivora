@@ -11,11 +11,13 @@ type CalendarState = {
   rangeStartUtc: string | null;
   rangeEndUtc: string | null;
   error: string | null;
+  focusEventId: string | null;
   loadRange: (startUtc: string, endUtc: string) => Promise<void>;
   reload: () => Promise<void>;
   createEvent: (input: EventInput) => Promise<EventRecord | null>;
   updateEvent: (id: string, patch: EventPatch) => Promise<boolean>;
   removeEvent: (id: string) => Promise<void>;
+  setFocusEventId: (id: string | null) => void;
 };
 
 function errorMessage(err: unknown): string {
@@ -31,6 +33,9 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
   rangeStartUtc: null,
   rangeEndUtc: null,
   error: null,
+  focusEventId: null,
+
+  setFocusEventId: (id) => set({ focusEventId: id }),
 
   loadRange: async (startUtc, endUtc) => {
     set({ rangeStartUtc: startUtc, rangeEndUtc: endUtc });

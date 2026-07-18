@@ -3,6 +3,7 @@ import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PanePlaceholder } from "../../components/common/PanePlaceholder";
+import { ReminderSection } from "../notifications/ReminderSection";
 import type { EventInput, EventPatch } from "../../services/events";
 import { useCalendarStore } from "../../stores/useCalendarStore";
 import { useTaskStore } from "../../stores/useTaskStore";
@@ -288,21 +289,24 @@ export function EventPanel({
     return <PanePlaceholder title="予定詳細" description="予定が見つかりません" />;
   }
   return (
-    <EventForm
-      key={`${event.id}:${event.updatedAt}`}
-      heading="予定を編集"
-      initial={draftFromEvent(event)}
-      submitLabel="保存"
-      meta={formatEventRange(event)}
-      onCancel={onClose}
-      onSubmit={(payload) => {
-        void updateEvent(event.id, payload as EventPatch).then((ok) => {
-          if (ok) onClose();
-        });
-      }}
-      onDelete={() => {
-        void removeEvent(event.id).then(onClose);
-      }}
-    />
+    <div className="event-panel__edit">
+      <EventForm
+        key={`${event.id}:${event.updatedAt}`}
+        heading="予定を編集"
+        initial={draftFromEvent(event)}
+        submitLabel="保存"
+        meta={formatEventRange(event)}
+        onCancel={onClose}
+        onSubmit={(payload) => {
+          void updateEvent(event.id, payload as EventPatch).then((ok) => {
+            if (ok) onClose();
+          });
+        }}
+        onDelete={() => {
+          void removeEvent(event.id).then(onClose);
+        }}
+      />
+      <ReminderSection eventId={event.id} />
+    </div>
   );
 }
