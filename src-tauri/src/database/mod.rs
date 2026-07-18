@@ -1,4 +1,7 @@
 pub mod events;
+pub mod jobs;
+pub mod meetings;
+pub mod providers;
 pub mod reminders;
 pub mod settings;
 pub mod tabs;
