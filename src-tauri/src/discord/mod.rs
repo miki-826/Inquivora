@@ -29,29 +29,105 @@ impl Default for DiscordSettings {
     }
 }
 
-pub fn load_settings(_conn: &Connection) -> Result<DiscordSettings, AppError> {
-    todo!()
+pub fn load_settings(conn: &Connection) -> Result<DiscordSettings, AppError> {
+    let stored = crate::database::settings::get_setting(conn, SETTINGS_KEY)?;
+    Ok(stored
+        .and_then(|value| serde_json::from_value(value).ok())
+        .unwrap_or_default())
 }
 
-pub fn validate_webhook_url(_url: &str) -> Result<String, AppError> {
-    todo!()
+pub fn validate_webhook_url(url: &str) -> Result<String, AppError> {
+    let trimmed = url.trim();
+    let allowed = ["https://discord.com/api/webhooks/", "https://discordapp.com/api/webhooks/"];
+    if allowed.iter().any(|prefix| trimmed.starts_with(prefix)) {
+        return Ok(trimmed.to_string());
+    }
+    Err(AppError::new(
+        "VALIDATION_ERROR",
+        "Discord Webhook URL（https://discord.com/api/webhooks/…）を入力してください",
+        false,
+    ))
 }
 
 pub fn segment_embed(
-    _meeting_title: &str,
-    _time_label: &str,
-    _speaker: &str,
-    _text: &str,
+    meeting_title: &str,
+    time_label: &str,
+    speaker: &str,
+    text: &str,
 ) -> serde_json::Value {
-    todo!()
+    serde_json::json!({
+        "author": { "name": format!("{time_label} {speaker}") },
+        "description": text,
+        "footer": { "text": meeting_title },
+        "color": EMBED_COLOR,
+    })
 }
 
-pub fn split_description(_text: &str, _limit: usize) -> Vec<String> {
-    todo!()
+/// 上限文字数で分割する。改行位置を優先し、なければ文字数で切る。
+pub fn split_description(text: &str, limit: usize) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut rest = text.trim();
+    while !rest.is_empty() {
+        if rest.chars().count() <= limit {
+            parts.push(rest.to_string());
+            break;
+        }
+        let byte_limit = rest
+            .char_indices()
+            .nth(limit)
+            .map(|(index, _)| index)
+            .unwrap_or(rest.len());
+        let cut = rest[..byte_limit].rfind('\n').unwrap_or(byte_limit);
+        let (head, tail) = rest.split_at(cut);
+        parts.push(head.trim_end_matches('\n').to_string());
+        rest = tail.trim_start_matches('\n').trim_start();
+    }
+    parts
 }
 
-pub fn summary_embeds(_meeting_title: &str, _full_text: &str) -> Vec<serde_json::Value> {
-    todo!()
+pub fn summary_embeds(meeting_title: &str, full_text: &str) -> Vec<serde_json::Value> {
+    let parts = split_description(full_text, DESCRIPTION_LIMIT);
+    let total = parts.len();
+    parts
+        .into_iter()
+        .enumerate()
+        .map(|(index, description)| {
+            let title = if total > 1 {
+                format!("{meeting_title} の文字起こし ({}/{})", index + 1, total)
+            } else {
+                format!("{meeting_title} の文字起こし")
+            };
+            serde_json::json!({
+                "title": title,
+                "description": description,
+                "color": EMBED_COLOR,
+            })
+        })
+        .collect()
+}
+
+/// WebhookへEmbedを投稿する。1回の投稿は最大10 Embedまで。
+pub async fn post_webhook(url: &str, embeds: &[serde_json::Value]) -> Result<(), AppError> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| AppError::new("DISCORD_POST_FAILED", format!("HTTPクライアント初期化に失敗: {e}"), true))?;
+    for chunk in embeds.chunks(MAX_EMBEDS_PER_POST) {
+        let response = client
+            .post(url)
+            .json(&serde_json::json!({ "embeds": chunk }))
+            .send()
+            .await
+            .map_err(|e| AppError::new("DISCORD_POST_FAILED", format!("Discordへの投稿に失敗: {e}"), true))?;
+        if !response.status().is_success() {
+            return Err(AppError::new(
+                "DISCORD_POST_FAILED",
+                format!("Discordへの投稿に失敗しました (HTTP {})", response.status().as_u16()),
+                true,
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
