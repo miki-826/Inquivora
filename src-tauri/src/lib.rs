@@ -3,6 +3,7 @@ pub mod commands;
 pub mod database;
 pub mod error;
 pub mod meeting;
+pub mod discord;
 pub mod whisper;
 pub mod notifications;
 pub mod tray;
