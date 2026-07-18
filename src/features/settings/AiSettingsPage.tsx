@@ -1,8 +1,16 @@
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useState } from "react";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
+import * as discordApi from "../../services/discord";
 import * as api from "../../services/providers";
+import { loadSetting, saveSetting } from "../../services/settings";
 import * as whisperApi from "../../services/whisper";
+import {
+  DISCORD_SETTINGS_KEY,
+  parseDiscordSettings,
+  validateWebhookUrl,
+  type DiscordSettings,
+} from "./discordModel";
 import {
   downloadPercent,
   formatModelSize,
@@ -569,6 +577,152 @@ function WhisperSection() {
   );
 }
 
+function DiscordSection() {
+  const [settings, setSettings] = useState<DiscordSettings | null>(null);
+  const [hasWebhook, setHasWebhook] = useState(false);
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void loadSetting(DISCORD_SETTINGS_KEY)
+      .then((stored) => setSettings(parseDiscordSettings(stored)))
+      .catch((err) => setError(messageOf(err)));
+    void discordApi
+      .hasDiscordWebhook()
+      .then(setHasWebhook)
+      .catch(() => setHasWebhook(false));
+  }, []);
+
+  if (!settings) return null;
+
+  const update = (partial: Partial<DiscordSettings>) => {
+    const next = { ...settings, ...partial };
+    setSettings(next);
+    void saveSetting(DISCORD_SETTINGS_KEY, next).catch((err) => setError(messageOf(err)));
+  };
+
+  const saveWebhook = async () => {
+    const validationError = validateWebhookUrl(webhookUrl);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await discordApi.setDiscordWebhook(webhookUrl.trim());
+      setWebhookUrl("");
+      setHasWebhook(true);
+      setMessage("Webhook URLを保存しました");
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeWebhook = async () => {
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await discordApi.deleteDiscordWebhook();
+      setHasWebhook(false);
+      setMessage("Webhook URLを削除しました");
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const testWebhook = async () => {
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await discordApi.testDiscordWebhook();
+      setMessage("テスト投稿を送信しました。Discordのチャンネルを確認してください");
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="settings-section">
+      <h2 className="settings-section__title">Discord連携</h2>
+      <p className="settings-note">
+        Webhook URLを登録すると、会議の文字起こしをDiscordのチャンネルへEmbedカードで投稿できます。
+        URLはAPIキーと同様にWindows Credential Managerへ保存されます。
+      </p>
+      <label className="settings-field">
+        Webhook URL {hasWebhook && <span className="settings-actions__ok">（登録済み）</span>}
+        <input
+          type="password"
+          placeholder={hasWebhook ? "登録済み（変更する場合のみ入力）" : "https://discord.com/api/webhooks/…"}
+          value={webhookUrl}
+          onChange={(e) => setWebhookUrl(e.target.value)}
+        />
+      </label>
+      <div className="settings-actions">
+        <button type="button" disabled={busy || !webhookUrl.trim()} onClick={() => void saveWebhook()}>
+          保存
+        </button>
+        <button type="button" disabled={busy || !hasWebhook} onClick={() => void testWebhook()}>
+          テスト投稿
+        </button>
+        {hasWebhook && (
+          <button
+            type="button"
+            className="provider-card__danger"
+            disabled={busy}
+            onClick={() => void removeWebhook()}
+          >
+            削除
+          </button>
+        )}
+      </div>
+      <label className="settings-field settings-field--toggle">
+        <input
+          type="checkbox"
+          checked={settings.enabled}
+          onChange={(e) => update({ enabled: e.target.checked })}
+        />
+        Discordへの投稿を有効にする
+      </label>
+      <label className="settings-field settings-field--toggle">
+        <input
+          type="checkbox"
+          checked={settings.realtime}
+          disabled={!settings.enabled}
+          onChange={(e) => update({ realtime: e.target.checked })}
+        />
+        確定セグメントごとにリアルタイム投稿する
+      </label>
+      <label className="settings-field settings-field--toggle">
+        <input
+          type="checkbox"
+          checked={settings.summary}
+          disabled={!settings.enabled}
+          onChange={(e) => update({ summary: e.target.checked })}
+        />
+        会議終了時に文字起こし全文をまとめて投稿する
+      </label>
+      {message && <p className="settings-actions__ok">{message}</p>}
+      {error && (
+        <p className="settings-actions__error" role="alert">
+          {error}
+        </p>
+      )}
+    </section>
+  );
+}
+
 function UsageSection() {
   const [logs, setLogs] = useState<api.UsageLog[]>([]);
   useEffect(() => {
@@ -669,6 +823,7 @@ export function AiSettingsPage() {
             <BindingRow key={key} featureKey={key} providers={providers} />
           ))}
         </section>
+        <DiscordSection />
         <UsageSection />
       </div>
     </ThreePaneLayout>

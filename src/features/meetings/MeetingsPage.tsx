@@ -191,11 +191,23 @@ function SegmentList({ segments }: { segments: TranscriptSegment[] }) {
   return (
     <ul className="meeting-segments">
       {segments.map((segment) => (
-        <li key={segment.id} className="meeting-segment">
-          <span className="meeting-segment__meta">
-            {segmentTimeLabel(segment)} {segment.speakerLabel}
-          </span>
-          <span className="meeting-segment__text">{segment.text}</span>
+        <li
+          key={segment.id}
+          className={`meeting-segment meeting-segment--${segment.source === "mic" ? "mic" : "loopback"}`}
+        >
+          <div className="meeting-segment__header">
+            <span
+              className={`meeting-segment__avatar meeting-segment__avatar--${
+                segment.source === "mic" ? "mic" : "loopback"
+              }`}
+              aria-hidden="true"
+            >
+              {segment.source === "mic" ? "🎤" : "🔊"}
+            </span>
+            <span className="meeting-segment__speaker">{segment.speakerLabel}</span>
+            <span className="meeting-segment__time">{segmentTimeLabel(segment)}</span>
+          </div>
+          <p className="meeting-segment__text">{segment.text}</p>
         </li>
       ))}
     </ul>
