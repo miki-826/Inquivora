@@ -7,6 +7,7 @@ import {
   parseNotificationSettings,
   type NotificationSettings,
 } from "../notifications/notificationModel";
+import { SettingsNav } from "./SettingsNav";
 
 const NOTIFICATION_SETTING_KEY = "notifications";
 
@@ -166,15 +167,7 @@ function GeneralSettingsSection() {
 
 export function SettingsPage() {
   return (
-    <ThreePaneLayout
-      left={
-        <div className="pane-section">
-          <div className="pane-section__title">設定</div>
-          <div>通知 / 一般</div>
-          <div className="settings-nav-note">エディタ・会議・AI・APIは今後のPhaseで実装予定</div>
-        </div>
-      }
-    >
+    <ThreePaneLayout left={<SettingsNav />}>
       <div className="settings-page">
         <NotificationSettingsSection />
         <GeneralSettingsSection />

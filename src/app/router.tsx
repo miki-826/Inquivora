@@ -20,6 +20,7 @@ export const router = createHashRouter([
       { path: "tasks", element: <TasksPage /> },
       { path: "calendar", element: <CalendarPage /> },
       { path: "settings", element: <SettingsPage /> },
+      { path: "settings/ai", element: <AiSettingsPage /> },
       { path: "*", element: <RedirectToLastScreen /> },
     ],
   },
