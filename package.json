@@ -1,7 +1,7 @@
 {
   "name": "inquivora",
   "private": true,
-  "version": "0.1.0-alpha.3",
+  "version": "0.1.0-alpha.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "test:dotnet": "dotnet test sidecars/inquivora-native/Inquivora.Native.sln",
+    "test:dotnet": "dotnet test native/Inquivora.Native.sln",
+    "sidecar:build": "node scripts/build-sidecar.mjs",
     "release:preflight": "node scripts/release-preflight.mjs",
     "release:windows": "node scripts/release-windows.mjs",
     "build:local": "tauri build"

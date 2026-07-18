@@ -39,18 +39,19 @@ jobs:
           npm run typecheck
           npm test
 
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Native sidecar tests
+        run: dotnet test native/Inquivora.Native.sln --configuration Release
+
+      - name: Publish native sidecar
+        run: node scripts/build-sidecar.mjs
+
       - name: Rust tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
-
-      # Sidecar実装後（Phase 4以降）に有効化する
-      # - name: Setup .NET
-      #   uses: actions/setup-dotnet@v4
-      #   with:
-      #     dotnet-version: '8.0.x'
-      # - name: Native sidecar tests
-      #   run: dotnet test native/Inquivora.Native/Inquivora.Native.sln --configuration Release
-      # - name: Publish native sidecar
-      #   run: dotnet publish native/Inquivora.Native/Inquivora.Native.csproj --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=true
 
       - name: Build and create draft release
         uses: tauri-apps/tauri-action@v0

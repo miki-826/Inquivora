@@ -56,6 +56,17 @@ export function runPreflight({ version = null, skipChecks = false } = {}) {
   const hasSidecar = existsSync(resolve(projectRoot, "native")) || existsSync(resolve(projectRoot, "sidecars"));
   if (hasSidecar) {
     check(".NET SDK が利用可能", () => run("dotnet", ["--list-sdks"]));
+    check("Sidecarバイナリが配置済み", () => {
+      const binary = resolve(
+        projectRoot,
+        "src-tauri",
+        "binaries",
+        "inquivora-native-x86_64-pc-windows-msvc.exe",
+      );
+      if (!existsSync(binary)) {
+        throw new Error("npm run sidecar:build を実行してください");
+      }
+    });
   } else {
     console.log("  - Sidecar未実装のため.NET SDK検査をスキップ");
   }
