@@ -41,7 +41,7 @@ function messageOf(error: unknown): string {
 }
 
 function normalizePath(path: string): string {
-  return path.replaceAll("\\", "/").toLowerCase();
+  return path.replace(/\\/g, "/").toLowerCase();
 }
 
 export const useMeetingStore = create<MeetingStore>((set, get) => ({

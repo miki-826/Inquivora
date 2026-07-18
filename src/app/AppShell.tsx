@@ -4,12 +4,17 @@ import { Toolbar } from "../components/layout/Toolbar";
 import { VerticalNav } from "../components/layout/VerticalNav";
 import { StatusBar } from "../components/statusbar/StatusBar";
 import { useDeepLink } from "../features/notifications/useDeepLink";
+import { initMeetingListeners } from "../stores/useMeetingStore";
 import { useSettingsStore } from "../stores/useSettingsStore";
 
 export function AppShell() {
   const location = useLocation();
   const setLastScreen = useSettingsStore((s) => s.setLastScreen);
   useDeepLink();
+
+  useEffect(() => {
+    initMeetingListeners();
+  }, []);
 
   useEffect(() => {
     if (location.pathname !== "/") {

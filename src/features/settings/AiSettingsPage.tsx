@@ -4,7 +4,6 @@ import * as api from "../../services/providers";
 import type { ConnectionTestResult, FeatureBinding } from "../../services/providers";
 import {
   FEATURE_KEYS,
-  PROVIDER_TYPES,
   capabilitiesForType,
   featureLabel,
   validateBaseUrl,
@@ -494,8 +493,11 @@ export function AiSettingsPage() {
   }, []);
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    void api
+      .listProviders()
+      .then(setProviders)
+      .catch((err) => setError(messageOf(err)));
+  }, []);
 
   return (
     <ThreePaneLayout left={<SettingsNav />}>

@@ -6,6 +6,7 @@ import { MeetingsPage } from "../features/meetings/MeetingsPage";
 import { TasksPage } from "../features/tasks/TasksPage";
 import { CalendarPage } from "../features/calendar/CalendarPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
+import { AiSettingsPage } from "../features/settings/AiSettingsPage";
 import { RedirectToLastScreen } from "../components/common/RedirectToLastScreen";
 
 export const router = createHashRouter([
