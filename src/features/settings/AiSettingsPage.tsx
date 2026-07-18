@@ -1,6 +1,13 @@
+import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useState } from "react";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
 import * as api from "../../services/providers";
+import * as whisperApi from "../../services/whisper";
+import {
+  downloadPercent,
+  formatModelSize,
+  type WhisperModelStatus,
+} from "./whisperModel";
 import type { ConnectionTestResult, FeatureBinding } from "../../services/providers";
 import {
   FEATURE_KEYS,
@@ -450,6 +457,118 @@ function BindingRow({
   );
 }
 
+type DownloadProgress = {
+  name: string;
+  receivedBytes: number;
+  totalBytes: number | null;
+};
+
+function WhisperSection() {
+  const [models, setModels] = useState<WhisperModelStatus[]>([]);
+  const [progress, setProgress] = useState<DownloadProgress | null>(null);
+  const [downloading, setDownloading] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      setModels(await whisperApi.getWhisperModelStatus());
+      setError(null);
+    } catch (err) {
+      setError(messageOf(err));
+    }
+  }, []);
+
+  useEffect(() => {
+    void whisperApi
+      .getWhisperModelStatus()
+      .then(setModels)
+      .catch((err) => setError(messageOf(err)));
+    let unlisten: (() => void) | null = null;
+    void listen<DownloadProgress>("whisper:model-download-progress", (event) => {
+      setProgress(event.payload);
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, []);
+
+  const select = async (name: string) => {
+    try {
+      await whisperApi.selectWhisperModel(name);
+      await refresh();
+    } catch (err) {
+      setError(messageOf(err));
+    }
+  };
+
+  const download = async (name: string) => {
+    setDownloading(name);
+    setProgress(null);
+    try {
+      await whisperApi.downloadWhisperModel(name);
+      await refresh();
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setDownloading(null);
+      setProgress(null);
+    }
+  };
+
+  const percent =
+    progress && downloading === progress.name
+      ? downloadPercent(progress.receivedBytes, progress.totalBytes)
+      : null;
+
+  return (
+    <section className="settings-section">
+      <h2 className="settings-section__title">ローカル文字起こし（内蔵Whisper）</h2>
+      <p className="settings-note">
+        APIを設定しなくても、選択したWhisperモデルで文字起こしをローカル処理します。
+        API Providerを「バッチ文字起こし」に割り当てた場合はAPIを優先します。
+      </p>
+      {error && (
+        <p className="settings-actions__error" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="whisper-models">
+        {models.map((model) => (
+          <div key={model.name} className="whisper-model">
+            <label className="whisper-model__select">
+              <input
+                type="radio"
+                name="whisper-model"
+                checked={model.selected}
+                onChange={() => void select(model.name)}
+              />
+              <span>{model.displayName}</span>
+              <span className="whisper-model__size">{formatModelSize(model.sizeMb)}</span>
+            </label>
+            {model.downloaded ? (
+              <span className="whisper-model__downloaded">ダウンロード済み</span>
+            ) : (
+              <button
+                type="button"
+                disabled={downloading !== null}
+                onClick={() => void download(model.name)}
+              >
+                {downloading === model.name
+                  ? percent !== null
+                    ? `ダウンロード中… ${percent}%`
+                    : "ダウンロード中…"
+                  : "ダウンロード"}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function UsageSection() {
   const [logs, setLogs] = useState<api.UsageLog[]>([]);
   useEffect(() => {
@@ -540,6 +659,7 @@ export function AiSettingsPage() {
             onCancel={() => setForm(null)}
           />
         )}
+        <WhisperSection />
         <section className="settings-section">
           <h2 className="settings-section__title">用途別モデル設定</h2>
           <p className="settings-note">

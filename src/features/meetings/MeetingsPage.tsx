@@ -104,7 +104,9 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
           <ul>
             {mic && <li>マイクの録音</li>}
             {loopback && <li>PC音声（ループバック）の録音</li>}
-            <li>録音チャンクの外部AI APIへの送信（文字起こしのため）</li>
+            <li>
+              録音チャンクの文字起こし（API Provider設定時は外部送信・未設定時は内蔵Whisperでローカル処理）
+            </li>
           </ul>
         </div>
         {localError && (
