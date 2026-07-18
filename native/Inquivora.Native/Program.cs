@@ -2,6 +2,7 @@ using System.CommandLine;
 using Inquivora.Native.Audio;
 using Inquivora.Native.Credentials;
 using Inquivora.Native.Notifications;
+using Inquivora.Native.Whisper;
 
 var rootCommand = new RootCommand("Inquivora native sidecar");
 
@@ -27,5 +28,12 @@ audioCommand.SetHandler(session =>
     Environment.ExitCode = AudioMode.Run(session, Console.In, Console.Out, Console.Error);
 }, sessionOption);
 rootCommand.AddCommand(audioCommand);
+
+var whisperCommand = new Command("whisper", "stdinのNDJSONコマンドでローカルWhisper文字起こしを行う");
+whisperCommand.SetHandler(() =>
+{
+    Environment.ExitCode = WhisperMode.Run(Console.In, Console.Out, Console.Error);
+});
+rootCommand.AddCommand(whisperCommand);
 
 return await rootCommand.InvokeAsync(args);

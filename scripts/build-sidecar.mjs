@@ -20,6 +20,7 @@ execFileSync(
     "--self-contained",
     "true",
     "-p:PublishSingleFile=true",
+    "-p:IncludeNativeLibrariesForSelfExtract=true",
   ],
   { cwd: projectRoot, stdio: "inherit" },
 );
