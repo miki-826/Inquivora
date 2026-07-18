@@ -120,6 +120,10 @@ pub fn run() {
             commands::meetings::meeting_list_segments,
             commands::meetings::meeting_append_segment,
             commands::meetings::meeting_list_devices,
+            commands::whisper::whisper_model_status,
+            commands::whisper::whisper_model_select,
+            commands::whisper::whisper_model_download,
+            commands::whisper::whisper_model_delete,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

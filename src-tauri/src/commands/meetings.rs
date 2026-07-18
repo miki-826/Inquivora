@@ -8,9 +8,9 @@ use tauri_plugin_shell::ShellExt;
 
 use crate::database::jobs;
 use crate::database::meetings::{self, Meeting, MeetingStatus, TranscriptSegment};
-use crate::database::providers;
 use crate::error::AppError;
-use crate::meeting::{files, session, worker};
+use crate::meeting::{files, session};
+use crate::whisper;
 use crate::DbState;
 
 fn lock_error(e: impl std::fmt::Display) -> AppError {
@@ -48,23 +48,12 @@ pub async fn meeting_start(app: AppHandle, input: MeetingStartInput) -> Result<M
     let meeting = {
         let state = app.state::<DbState>();
         let conn = state.0.lock().map_err(lock_error)?;
-        let binding = providers::get_binding(&conn, worker::TRANSCRIPTION_FEATURE)?;
-        let configured = binding.and_then(|b| b.provider_profile_id.zip(b.model_id));
-        let Some((provider_id, _model)) = configured else {
-            return Err(AppError::new(
-                "API_PROVIDER_NOT_CONFIGURED",
-                "文字起こしのProviderが未設定です。設定画面のAI・APIで設定してください",
-                false,
-            ));
-        };
-        let profile = providers::get_provider(&conn, &provider_id)?;
-        if !profile.enabled {
-            return Err(AppError::new(
-                "API_PROVIDER_DISABLED",
-                "文字起こしのProviderが無効化されています",
-                false,
-            ));
-        }
+        let selected = whisper::models::selected_model(&conn)?;
+        let models_dir = whisper::download::models_dir(&app)?;
+        let local_available = whisper::models::model_path(&models_dir, &selected)
+            .map(|p| p.is_file())
+            .unwrap_or(false);
+        whisper::route::resolve_transcription_route(&conn, local_available)?;
         meetings::create_meeting(
             &conn,
             meetings::MeetingInput {

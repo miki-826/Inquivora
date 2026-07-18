@@ -5,4 +5,5 @@ pub mod providers;
 pub mod reminders;
 pub mod settings;
 pub mod tasks;
+pub mod whisper;
 pub mod workspace;
