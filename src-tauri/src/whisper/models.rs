@@ -24,28 +24,73 @@ pub struct ModelStatus {
     pub selected: bool,
 }
 
+const CATALOG: &[ModelSpec] = &[
+    ModelSpec {
+        name: "tiny",
+        display_name: "Tiny（最小・低精度）",
+        size_mb: 75,
+    },
+    ModelSpec {
+        name: "base",
+        display_name: "Base（小型・軽量）",
+        size_mb: 142,
+    },
+    ModelSpec {
+        name: "small",
+        display_name: "Small（推奨・日本語向け）",
+        size_mb: 466,
+    },
+];
+
 pub fn catalog() -> &'static [ModelSpec] {
-    todo!()
+    CATALOG
 }
 
-pub fn model_url(_name: &str) -> Option<String> {
-    todo!()
+fn spec(name: &str) -> Option<&'static ModelSpec> {
+    CATALOG.iter().find(|m| m.name == name)
 }
 
-pub fn model_path(_models_dir: &Path, _name: &str) -> Option<PathBuf> {
-    todo!()
+pub fn model_url(name: &str) -> Option<String> {
+    spec(name).map(|m| {
+        format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{}.bin", m.name)
+    })
 }
 
-pub fn model_status(_models_dir: &Path, _selected: &str) -> Vec<ModelStatus> {
-    todo!()
+pub fn model_path(models_dir: &Path, name: &str) -> Option<PathBuf> {
+    spec(name).map(|m| models_dir.join(format!("ggml-{}.bin", m.name)))
 }
 
-pub fn selected_model(_conn: &Connection) -> Result<String, AppError> {
-    todo!()
+pub fn model_status(models_dir: &Path, selected: &str) -> Vec<ModelStatus> {
+    CATALOG
+        .iter()
+        .map(|m| ModelStatus {
+            name: m.name.to_string(),
+            display_name: m.display_name.to_string(),
+            size_mb: m.size_mb,
+            downloaded: models_dir.join(format!("ggml-{}.bin", m.name)).is_file(),
+            selected: m.name == selected,
+        })
+        .collect()
 }
 
-pub fn set_selected_model(_conn: &Connection, _name: &str) -> Result<(), AppError> {
-    todo!()
+pub fn selected_model(conn: &Connection) -> Result<String, AppError> {
+    let stored = crate::database::settings::get_setting(conn, SELECTED_MODEL_KEY)?
+        .and_then(|v| v.as_str().map(str::to_string));
+    Ok(match stored {
+        Some(name) if spec(&name).is_some() => name,
+        _ => DEFAULT_MODEL.to_string(),
+    })
+}
+
+pub fn set_selected_model(conn: &Connection, name: &str) -> Result<(), AppError> {
+    if spec(name).is_none() {
+        return Err(AppError::new(
+            "VALIDATION_ERROR",
+            format!("不明なWhisperモデルです: {name}"),
+            false,
+        ));
+    }
+    crate::database::settings::set_setting(conn, SELECTED_MODEL_KEY, &serde_json::Value::String(name.to_string()))
 }
 
 #[cfg(test)]

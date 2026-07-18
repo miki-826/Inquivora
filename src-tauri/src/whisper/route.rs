@@ -11,10 +11,39 @@ pub enum TranscriptionRoute {
 /// 文字起こしの経路解決。APIのFeature Bindingが設定済みならAPIを優先し、
 /// 未設定または無効ならローカルWhisperへフォールバックする。
 pub fn resolve_transcription_route(
-    _conn: &Connection,
-    _local_available: bool,
+    conn: &Connection,
+    local_available: bool,
 ) -> Result<TranscriptionRoute, AppError> {
-    todo!()
+    use crate::database::providers;
+    use crate::meeting::worker::TRANSCRIPTION_FEATURE;
+
+    let binding = providers::get_binding(conn, TRANSCRIPTION_FEATURE)?;
+    let configured = binding.and_then(|b| match (b.provider_profile_id, b.model_id) {
+        (Some(provider_id), Some(model)) => Some((provider_id, model)),
+        _ => None,
+    });
+    let Some((provider_id, model)) = configured else {
+        if local_available {
+            return Ok(TranscriptionRoute::Local);
+        }
+        return Err(AppError::new(
+            "TRANSCRIPTION_NOT_READY",
+            "文字起こしの準備ができていません。設定画面でWhisperモデルをダウンロードするか、API Providerを設定してください",
+            false,
+        ));
+    };
+    let profile = providers::get_provider(conn, &provider_id)?;
+    if !profile.enabled {
+        if local_available {
+            return Ok(TranscriptionRoute::Local);
+        }
+        return Err(AppError::new(
+            "API_PROVIDER_DISABLED",
+            "文字起こしのProviderが無効化されています。有効化するかWhisperモデルをダウンロードしてください",
+            false,
+        ));
+    }
+    Ok(TranscriptionRoute::Api { provider_id, model })
 }
 
 #[cfg(test)]
