@@ -14,7 +14,9 @@
   <ItemGroup>
     <!-- 通知はWindows SDK組み込みのWindows.UI.Notificationsを使用する。
          Microsoft.WindowsAppSDKの自己完結配置は単一ファイル発行（§3.6）とSxS構成が両立しないため不採用。
-         録音はPhase 5でWinForms非依存のNAudio.Core/NAudio.Wasapiを追加する -->
+         録音はWinForms依存のNAudio本体ではなく、NAudio.Core/NAudio.Wasapiを使用する -->
+    <PackageReference Include="NAudio.Core" Version="2.2.1" />
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
     <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
   </ItemGroup>
 </Project>
