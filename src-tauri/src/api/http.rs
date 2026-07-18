@@ -11,6 +11,20 @@ use crate::api::client::{
 };
 use crate::error::AppError;
 
+pub fn runtime_from_profile(
+    profile: &crate::database::providers::ApiProviderProfile,
+    secret: Option<String>,
+) -> ProviderRuntime {
+    ProviderRuntime {
+        base_url: profile.base_url.clone(),
+        auth_type: profile.auth_type.clone(),
+        secret,
+        default_headers: profile.default_headers.clone(),
+        timeout_ms: profile.timeout_ms.max(1000) as u64,
+        capabilities: profile.capabilities.clone(),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ProviderRuntime {
     pub base_url: String,

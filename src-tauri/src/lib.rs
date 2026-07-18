@@ -45,6 +45,8 @@ pub fn run() {
                 tray::show_main_window(&handle);
             });
             notifications::scheduler::spawn(app.handle().clone());
+            app.manage(meeting::session::AudioSessions::default());
+            meeting::worker::spawn(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -93,6 +95,30 @@ pub fn run() {
             commands::reminders::reminder_list_for_target,
             commands::reminders::notification_test,
             commands::reminders::notification_reconcile,
+            commands::providers::api_provider_list,
+            commands::providers::api_provider_get,
+            commands::providers::api_provider_create,
+            commands::providers::api_provider_update,
+            commands::providers::api_provider_delete,
+            commands::providers::api_provider_enable,
+            commands::providers::api_provider_set_secret,
+            commands::providers::api_provider_delete_secret,
+            commands::providers::api_provider_has_secret,
+            commands::providers::api_provider_test,
+            commands::providers::api_provider_list_models,
+            commands::providers::ai_feature_binding_get,
+            commands::providers::ai_feature_binding_set,
+            commands::providers::api_usage_list,
+            commands::meetings::meeting_start,
+            commands::meetings::meeting_pause,
+            commands::meetings::meeting_resume,
+            commands::meetings::meeting_stop,
+            commands::meetings::meeting_get,
+            commands::meetings::meeting_list,
+            commands::meetings::meeting_delete,
+            commands::meetings::meeting_list_segments,
+            commands::meetings::meeting_append_segment,
+            commands::meetings::meeting_list_devices,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
