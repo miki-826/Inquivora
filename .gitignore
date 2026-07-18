@@ -30,6 +30,7 @@ src-tauri/binaries/
 logs/
 recordings/
 credentials/
+!native/Inquivora.Native/Credentials/
 local-data/
 
 # Signing material
