@@ -8,19 +8,31 @@ pub mod workspace;
 use std::sync::Mutex;
 
 use rusqlite::Connection;
-use tauri::{Manager, WindowEvent};
+use tauri::{Emitter, Manager, WindowEvent};
+use tauri_plugin_deep_link::DeepLinkExt;
 
 pub struct DbState(pub Mutex<Connection>);
+
+/// §14.3 通知クリック等のinquivora:// URLをフロントエンドへ通知し、ウィンドウを前面化する。
+fn handle_deep_link_urls(app: &tauri::AppHandle, urls: Vec<tauri::Url>) {
+    tray::show_main_window(app);
+    for url in urls {
+        if url.scheme() == "inquivora" {
+            let _ = app.emit("deeplink:open", url.to_string());
+        }
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // updaterプラグインはplugins.updater設定（署名公開鍵・endpoints）が必須のため、
     // 自動更新を構成するPhase 7で登録する
     tauri::Builder::default()
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             tray::show_main_window(app);
         }))
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
@@ -33,6 +45,13 @@ pub fn run() {
             app.manage(DbState(Mutex::new(conn)));
             app.manage(commands::workspace::WorkspaceState::default());
             tray::setup_tray(app.handle())?;
+            #[cfg(debug_assertions)]
+            app.deep_link().register_all()?;
+            let handle = app.handle().clone();
+            app.deep_link().on_open_url(move |event| {
+                handle_deep_link_urls(&handle, event.urls());
+            });
+            notifications::scheduler::spawn(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -72,7 +91,15 @@ pub fn run() {
             commands::events::event_create,
             commands::events::event_update,
             commands::events::event_delete,
+            commands::events::event_get,
             commands::events::event_get_range,
+            commands::reminders::reminder_create,
+            commands::reminders::reminder_update,
+            commands::reminders::reminder_delete,
+            commands::reminders::reminder_list_upcoming,
+            commands::reminders::reminder_list_for_target,
+            commands::reminders::notification_test,
+            commands::reminders::notification_reconcile,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
