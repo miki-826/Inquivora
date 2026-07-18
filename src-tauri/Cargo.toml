@@ -1,6 +1,6 @@
 [package]
 name = "inquivora"
-version = "0.1.0-alpha.4"
+version = "0.1.0-alpha.5"
 description = "Inquivora — すべてを取り込み、ひとつにつなぐ。Windows向けローカルファースト統合ワークスペース"
 authors = ["miki-826"]
 edition = "2021"
