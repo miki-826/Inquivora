@@ -51,7 +51,7 @@ export function languageForExtension(extension: string | null): string {
   return LANGUAGE_BY_EXTENSION[extension.toLowerCase()] ?? "plaintext";
 }
 
-const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg"]);
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg",  "jpe"]);
 const AUDIO_EXTENSIONS = new Set(["wav", "mp3", "m4a"]);
 const VIDEO_EXTENSIONS = new Set(["mp4", "webm"]);
 
