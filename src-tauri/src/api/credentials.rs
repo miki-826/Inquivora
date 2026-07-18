@@ -1,3 +1,67 @@
+use serde_json::json;
+
+use crate::error::AppError;
+
+pub fn credential_target(profile_id: &str) -> String {
+    format!("Inquivora/API/{profile_id}")
+}
+
+pub fn build_set_command(profile_id: &str, user_name: &str, secret: &str) -> String {
+    json!({
+        "command": "set",
+        "target": credential_target(profile_id),
+        "userName": user_name,
+        "secret": secret,
+    })
+    .to_string()
+}
+
+pub fn build_get_command(profile_id: &str) -> String {
+    json!({ "command": "get", "target": credential_target(profile_id) }).to_string()
+}
+
+pub fn build_has_command(profile_id: &str) -> String {
+    json!({ "command": "has", "target": credential_target(profile_id) }).to_string()
+}
+
+pub fn build_delete_command(profile_id: &str) -> String {
+    json!({ "command": "delete", "target": credential_target(profile_id) }).to_string()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CredentialResponse {
+    Ok,
+    Secret(String),
+    NotFound,
+    Error { code: String, message: String },
+}
+
+pub fn parse_credential_response(line: &str) -> Result<CredentialResponse, AppError> {
+    let value: serde_json::Value =
+        serde_json::from_str(line.trim().trim_start_matches('\u{feff}')).map_err(|_| {
+            AppError::new("CREDENTIAL_ERROR", "資格情報の応答を解釈できません", false)
+        })?;
+    match value["type"].as_str() {
+        Some("credential.ok") => Ok(CredentialResponse::Ok),
+        Some("credential.secret") => value["secret"]
+            .as_str()
+            .map(|secret| CredentialResponse::Secret(secret.to_string()))
+            .ok_or_else(|| {
+                AppError::new("CREDENTIAL_ERROR", "資格情報の応答にsecretがありません", false)
+            }),
+        Some("credential.notFound") => Ok(CredentialResponse::NotFound),
+        Some("credential.error") => Ok(CredentialResponse::Error {
+            code: value["code"].as_str().unwrap_or("CREDENTIAL_ERROR").to_string(),
+            message: value["message"].as_str().unwrap_or("資格情報の操作に失敗しました").to_string(),
+        }),
+        _ => Err(AppError::new(
+            "CREDENTIAL_ERROR",
+            "資格情報の応答種別が不明です",
+            false,
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

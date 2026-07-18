@@ -1,3 +1,275 @@
+use chrono::Utc;
+use rusqlite::{Connection, OptionalExtension, Row};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use crate::error::AppError;
+use crate::meeting::markdown;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MeetingStatus {
+    Recording,
+    Paused,
+    Completed,
+}
+
+impl MeetingStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            MeetingStatus::Recording => "recording",
+            MeetingStatus::Paused => "paused",
+            MeetingStatus::Completed => "completed",
+        }
+    }
+
+    fn from_db(value: &str) -> Self {
+        match value {
+            "paused" => MeetingStatus::Paused,
+            "completed" => MeetingStatus::Completed,
+            _ => MeetingStatus::Recording,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Meeting {
+    pub id: String,
+    pub workspace_id: Option<String>,
+    pub title: String,
+    #[serde(rename = "startedAtUtc")]
+    pub started_at: String,
+    #[serde(rename = "endedAtUtc")]
+    pub ended_at: Option<String>,
+    pub timezone: String,
+    pub target_file_path: String,
+    pub start_marker: String,
+    pub end_marker: String,
+    pub summary: Option<String>,
+    pub status: MeetingStatus,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+fn default_timezone() -> String {
+    "Asia/Tokyo".to_string()
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingInput {
+    pub title: String,
+    #[serde(default)]
+    pub workspace_id: Option<String>,
+    pub target_file_path: String,
+    #[serde(default = "default_timezone")]
+    pub timezone: String,
+}
+
+fn row_to_meeting(row: &Row) -> rusqlite::Result<Meeting> {
+    let status: String = row.get("status")?;
+    Ok(Meeting {
+        id: row.get("id")?,
+        workspace_id: row.get("workspace_id")?,
+        title: row.get("title")?,
+        started_at: row.get("started_at")?,
+        ended_at: row.get("ended_at")?,
+        timezone: row.get("timezone")?,
+        target_file_path: row.get("target_file_path")?,
+        start_marker: row.get("start_marker")?,
+        end_marker: row.get("end_marker")?,
+        summary: row.get("summary")?,
+        status: MeetingStatus::from_db(&status),
+        created_at: row.get("created_at")?,
+        updated_at: row.get("updated_at")?,
+    })
+}
+
+const MEETING_COLUMNS: &str = "id, workspace_id, title, started_at, ended_at, timezone, \
+     target_file_path, start_marker, end_marker, summary, status, created_at, updated_at";
+
+pub fn create_meeting(conn: &Connection, input: MeetingInput) -> Result<Meeting, AppError> {
+    if input.title.trim().is_empty() {
+        return Err(AppError::new(
+            "VALIDATION_ERROR",
+            "会議タイトルを入力してください",
+            false,
+        ));
+    }
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO meetings
+            (id, workspace_id, title, started_at, timezone, target_file_path,
+             start_marker, end_marker, status, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'recording', ?4, ?4)",
+        rusqlite::params![
+            id,
+            input.workspace_id,
+            input.title.trim(),
+            now,
+            input.timezone,
+            input.target_file_path,
+            markdown::start_marker(&id),
+            markdown::end_marker(&id),
+        ],
+    )?;
+    get_meeting(conn, &id)
+}
+
+pub fn get_meeting(conn: &Connection, id: &str) -> Result<Meeting, AppError> {
+    conn.query_row(
+        &format!("SELECT {MEETING_COLUMNS} FROM meetings WHERE id = ?1"),
+        [id],
+        row_to_meeting,
+    )
+    .optional()?
+    .ok_or_else(|| AppError::new("MEETING_NOT_FOUND", "会議が見つかりません", false))
+}
+
+pub fn list_meetings(conn: &Connection, limit: i64) -> Result<Vec<Meeting>, AppError> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {MEETING_COLUMNS} FROM meetings ORDER BY started_at DESC LIMIT ?1"
+    ))?;
+    let rows = stmt.query_map([limit], row_to_meeting)?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
+pub fn set_meeting_status(
+    conn: &Connection,
+    id: &str,
+    status: MeetingStatus,
+) -> Result<(), AppError> {
+    let affected = conn.execute(
+        "UPDATE meetings SET status = ?2, updated_at = ?3 WHERE id = ?1",
+        rusqlite::params![id, status.as_str(), Utc::now().to_rfc3339()],
+    )?;
+    if affected == 0 {
+        return Err(AppError::new("MEETING_NOT_FOUND", "会議が見つかりません", false));
+    }
+    Ok(())
+}
+
+pub fn end_meeting(conn: &Connection, id: &str) -> Result<(), AppError> {
+    let now = Utc::now().to_rfc3339();
+    let affected = conn.execute(
+        "UPDATE meetings SET status = 'completed', ended_at = ?2, updated_at = ?2 WHERE id = ?1",
+        rusqlite::params![id, now],
+    )?;
+    if affected == 0 {
+        return Err(AppError::new("MEETING_NOT_FOUND", "会議が見つかりません", false));
+    }
+    Ok(())
+}
+
+pub fn delete_meeting(conn: &Connection, id: &str) -> Result<(), AppError> {
+    let affected = conn.execute("DELETE FROM meetings WHERE id = ?1", [id])?;
+    if affected == 0 {
+        return Err(AppError::new("MEETING_NOT_FOUND", "会議が見つかりません", false));
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranscriptSegment {
+    pub id: String,
+    pub meeting_id: String,
+    pub source: String,
+    pub speaker_label: String,
+    pub start_ms: i64,
+    pub end_ms: i64,
+    pub text: String,
+    pub status: String,
+    pub audio_chunk_path: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SegmentInput {
+    pub meeting_id: String,
+    pub source: String,
+    pub speaker_label: String,
+    pub start_ms: i64,
+    pub end_ms: i64,
+    pub text: String,
+    #[serde(default)]
+    pub audio_chunk_path: Option<String>,
+}
+
+fn row_to_segment(row: &Row) -> rusqlite::Result<TranscriptSegment> {
+    Ok(TranscriptSegment {
+        id: row.get(0)?,
+        meeting_id: row.get(1)?,
+        source: row.get(2)?,
+        speaker_label: row.get(3)?,
+        start_ms: row.get(4)?,
+        end_ms: row.get(5)?,
+        text: row.get(6)?,
+        status: row.get(7)?,
+        audio_chunk_path: row.get(8)?,
+        created_at: row.get(9)?,
+    })
+}
+
+const SEGMENT_COLUMNS: &str = "id, meeting_id, source, speaker_label, start_ms, end_ms, text, \
+     status, audio_chunk_path, created_at";
+
+pub fn insert_segment(conn: &Connection, input: SegmentInput) -> Result<TranscriptSegment, AppError> {
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO transcript_segments
+            (id, meeting_id, source, speaker_label, start_ms, end_ms, text, status,
+             audio_chunk_path, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'confirmed', ?8, ?9)",
+        rusqlite::params![
+            id,
+            input.meeting_id,
+            input.source,
+            input.speaker_label,
+            input.start_ms,
+            input.end_ms,
+            input.text,
+            input.audio_chunk_path,
+            now,
+        ],
+    )?;
+    conn.query_row(
+        &format!("SELECT {SEGMENT_COLUMNS} FROM transcript_segments WHERE id = ?1"),
+        [&id],
+        row_to_segment,
+    )
+    .map_err(Into::into)
+}
+
+pub fn list_segments(conn: &Connection, meeting_id: &str) -> Result<Vec<TranscriptSegment>, AppError> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {SEGMENT_COLUMNS} FROM transcript_segments
+         WHERE meeting_id = ?1 ORDER BY start_ms, created_at"
+    ))?;
+    let rows = stmt.query_map([meeting_id], row_to_segment)?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
+pub fn last_segment_text(
+    conn: &Connection,
+    meeting_id: &str,
+    source: &str,
+) -> Result<Option<String>, AppError> {
+    Ok(conn
+        .query_row(
+            "SELECT text FROM transcript_segments
+             WHERE meeting_id = ?1 AND source = ?2
+             ORDER BY start_ms DESC, created_at DESC LIMIT 1",
+            [meeting_id, source],
+            |row| row.get(0),
+        )
+        .optional()?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

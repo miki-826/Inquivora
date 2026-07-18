@@ -1,3 +1,28 @@
+/// §9.6 オーバーラップ重複除去。前セグメント末尾と新セグメント先頭の
+/// 最長一致（4文字以上・最大50文字）を新テキストから取り除く。
+pub fn dedupe_overlap(prev: &str, next: &str) -> String {
+    const MIN_MATCH: usize = 4;
+    const MAX_MATCH: usize = 50;
+    let prev_trimmed = prev.trim();
+    let next_trimmed = next.trim();
+    if prev_trimmed.is_empty() || next_trimmed.is_empty() {
+        return next_trimmed.to_string();
+    }
+    let prev_chars: Vec<char> = prev_trimmed.chars().collect();
+    let next_chars: Vec<char> = next_trimmed.chars().collect();
+    let max_len = prev_chars.len().min(next_chars.len()).min(MAX_MATCH);
+    for len in (MIN_MATCH..=max_len).rev() {
+        if prev_chars[prev_chars.len() - len..] == next_chars[..len] {
+            return next_chars[len..]
+                .iter()
+                .collect::<String>()
+                .trim_start()
+                .to_string();
+        }
+    }
+    next_trimmed.to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,3 +1,100 @@
+use std::collections::HashMap;
+
+use serde::{Deserialize, Serialize};
+
+use crate::error::AppError;
+
+const PROTECTED_HEADERS: &[&str] = &["authorization", "x-api-key", "proxy-authorization", "cookie"];
+
+pub fn auth_headers(auth_type: &str, secret: &str) -> Vec<(String, String)> {
+    match auth_type {
+        "bearer" => vec![("Authorization".to_string(), format!("Bearer {secret}"))],
+        "x-api-key" => vec![("x-api-key".to_string(), secret.to_string())],
+        _ => Vec::new(),
+    }
+}
+
+/// カスタムヘッダーと認証ヘッダーを結合する。認証系ヘッダーは常に正規の値が優先される。
+pub fn merge_headers(
+    defaults: &HashMap<String, String>,
+    auth: &[(String, String)],
+) -> HashMap<String, String> {
+    let mut merged: HashMap<String, String> = defaults
+        .iter()
+        .filter(|(name, _)| !PROTECTED_HEADERS.contains(&name.to_ascii_lowercase().as_str()))
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect();
+    for (name, value) in auth {
+        merged.insert(name.clone(), value.clone());
+    }
+    merged
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelsResponse {
+    data: Vec<ModelEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelEntry {
+    id: String,
+}
+
+pub fn parse_models_response(body: &str) -> Result<Vec<String>, AppError> {
+    let parsed: ModelsResponse = serde_json::from_str(body).map_err(|_| {
+        AppError::new(
+            "API_RESPONSE_INVALID",
+            "モデル一覧の応答を解釈できません",
+            false,
+        )
+    })?;
+    let mut models: Vec<String> = parsed.data.into_iter().map(|entry| entry.id).collect();
+    models.sort();
+    Ok(models)
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranscriptionResult {
+    pub text: String,
+    pub language: Option<String>,
+    pub duration_ms: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawTranscription {
+    text: String,
+    #[serde(default)]
+    language: Option<String>,
+    #[serde(default)]
+    duration: Option<f64>,
+}
+
+pub fn parse_transcription_response(body: &str) -> Result<TranscriptionResult, AppError> {
+    let raw: RawTranscription = serde_json::from_str(body).map_err(|_| {
+        AppError::new(
+            "API_RESPONSE_INVALID",
+            "文字起こしの応答を解釈できません",
+            false,
+        )
+    })?;
+    Ok(TranscriptionResult {
+        text: raw.text,
+        language: raw.language,
+        duration_ms: raw.duration.map(|d| (d * 1000.0).round() as i64),
+    })
+}
+
+pub fn classify_status(status: u16) -> (&'static str, bool) {
+    match status {
+        401 | 403 => ("API_AUTH_FAILED", false),
+        404 => ("API_NOT_FOUND", false),
+        429 => ("API_RATE_LIMITED", true),
+        500..=599 => ("API_SERVER_ERROR", true),
+        _ => ("API_REQUEST_FAILED", false),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
