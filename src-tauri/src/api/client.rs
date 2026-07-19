@@ -85,6 +85,132 @@ pub fn parse_transcription_response(body: &str) -> Result<TranscriptionResult, A
     })
 }
 
+#[derive(Debug, Deserialize)]
+struct ChatCompletionResponse {
+    choices: Vec<ChatChoice>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatChoice {
+    message: ChatMessage,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatMessage {
+    content: String,
+}
+
+/// OpenAI互換のchat/completions応答から最初のメッセージ本文を取り出す。
+pub fn parse_chat_completion_content(body: &str) -> Result<String, AppError> {
+    let parsed: ChatCompletionResponse = serde_json::from_str(body).map_err(|_| {
+        AppError::new("API_RESPONSE_INVALID", "AI応答を解釈できません", false)
+    })?;
+    parsed
+        .choices
+        .into_iter()
+        .next()
+        .map(|choice| choice.message.content)
+        .ok_or_else(|| AppError::new("API_RESPONSE_INVALID", "AI応答に本文がありません", false))
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingAiOutput {
+    pub title: String,
+    pub summary: String,
+    pub decisions: Vec<AiDecision>,
+    pub task_candidates: Vec<AiTaskCandidate>,
+    pub open_questions: Vec<AiOpenQuestion>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiDecision {
+    pub text: String,
+    #[serde(default)]
+    pub source_start_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiTaskCandidate {
+    pub title: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub assignee: Option<String>,
+    #[serde(default)]
+    pub due_at: Option<String>,
+    pub priority: String,
+    #[serde(default)]
+    pub source_start_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiOpenQuestion {
+    pub text: String,
+    #[serde(default)]
+    pub source_start_ms: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawMeetingAi {
+    #[serde(default)]
+    title: String,
+    summary: String,
+    #[serde(default)]
+    decisions: Vec<AiDecision>,
+    #[serde(default)]
+    task_candidates: Vec<AiTaskCandidate>,
+    #[serde(default)]
+    open_questions: Vec<AiOpenQuestion>,
+}
+
+fn invalid_ai_output() -> AppError {
+    AppError::new(
+        "API_RESPONSE_INVALID",
+        "AIの議事録出力が仕様の形式ではありません",
+        false,
+    )
+}
+
+/// コードフェンスや前後の説明文が混じっていても最初のJSONオブジェクトを抜き出す。
+fn extract_json_object(content: &str) -> Option<&str> {
+    let start = content.find('{')?;
+    let end = content.rfind('}')?;
+    if end > start {
+        Some(&content[start..=end])
+    } else {
+        None
+    }
+}
+
+/// §10.10 議事録AI出力をZod相当で検証して取り出す。
+pub fn parse_meeting_ai_output(content: &str) -> Result<MeetingAiOutput, AppError> {
+    let json = extract_json_object(content).ok_or_else(invalid_ai_output)?;
+    let raw: RawMeetingAi = serde_json::from_str(json).map_err(|_| invalid_ai_output())?;
+    if raw.summary.trim().is_empty() {
+        return Err(invalid_ai_output());
+    }
+    for candidate in &raw.task_candidates {
+        if !matches!(candidate.priority.as_str(), "high" | "medium" | "low") {
+            return Err(invalid_ai_output());
+        }
+        if candidate.title.trim().is_empty() {
+            return Err(invalid_ai_output());
+        }
+    }
+    Ok(MeetingAiOutput {
+        title: raw.title,
+        summary: raw.summary,
+        decisions: raw.decisions,
+        task_candidates: raw.task_candidates,
+        open_questions: raw.open_questions,
+    })
+}
+
 pub fn classify_status(status: u16) -> (&'static str, bool) {
     match status {
         401 | 403 => ("API_AUTH_FAILED", false),

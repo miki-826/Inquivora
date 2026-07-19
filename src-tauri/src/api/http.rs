@@ -6,8 +6,9 @@ use chrono::Utc;
 use serde::Serialize;
 
 use crate::api::client::{
-    auth_headers, classify_status, merge_headers, parse_models_response,
-    parse_transcription_response, TranscriptionResult,
+    auth_headers, classify_status, merge_headers, parse_chat_completion_content,
+    parse_meeting_ai_output, parse_models_response, parse_transcription_response, MeetingAiOutput,
+    TranscriptionResult,
 };
 use crate::error::AppError;
 
@@ -216,6 +217,60 @@ pub async fn transcribe(
     parse_transcription_response(&body)
 }
 
+#[derive(Debug, Clone)]
+pub struct SummaryRequest {
+    pub model: String,
+    pub system_prompt: String,
+    pub user_content: String,
+}
+
+fn chat_body(request: &SummaryRequest, repair_note: Option<&str>) -> serde_json::Value {
+    let mut user = request.user_content.clone();
+    if let Some(note) = repair_note {
+        user = format!("{user}\n\n# 修復指示\n{note}");
+    }
+    serde_json::json!({
+        "model": request.model,
+        "temperature": 0.2,
+        "response_format": { "type": "json_object" },
+        "messages": [
+            { "role": "system", "content": request.system_prompt },
+            { "role": "user", "content": user },
+        ],
+    })
+}
+
+async fn post_chat(
+    profile: &ProviderRuntime,
+    client: &reqwest::Client,
+    url: &str,
+    body: &serde_json::Value,
+) -> Result<String, AppError> {
+    let (status, response_body) = send_request(profile, client.post(url).json(body)).await?;
+    if status != 200 {
+        return Err(status_error(status, "議事録生成APIが失敗しました"));
+    }
+    parse_chat_completion_content(&response_body)
+}
+
+/// §10.10 議事録生成。JSONスキーマ不一致の場合は1回だけ修復リクエストを行う。
+pub async fn generate_summary(
+    profile: &ProviderRuntime,
+    request: SummaryRequest,
+) -> Result<MeetingAiOutput, AppError> {
+    let client = http_client(profile.timeout_ms)?;
+    let url = format!("{}/chat/completions", profile.base_url);
+    let content = post_chat(profile, &client, &url, &chat_body(&request, None)).await?;
+    match parse_meeting_ai_output(&content) {
+        Ok(output) => Ok(output),
+        Err(_) => {
+            let repair = "前回の応答が指定スキーマの有効なJSONではありませんでした。説明やコードフェンスを付けず、スキーマに一致するJSONオブジェクトのみを返してください。";
+            let retried = post_chat(profile, &client, &url, &chat_body(&request, Some(repair))).await?;
+            parse_meeting_ai_output(&retried)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -343,6 +398,32 @@ mod tests {
         let result = test_connection(&runtime_profile("http://127.0.0.1:1/v1", Some("sk"))).await;
         assert!(!result.success);
         assert_eq!(result.error_code.as_deref(), Some("API_CONNECTION_FAILED"));
+    }
+
+    #[tokio::test]
+    async fn 議事録生成はchat_completionsへjsonを送り構造化出力を返す() {
+        let (base, rx) = spawn_mock_server(
+            "HTTP/1.1 200 OK",
+            r#"{"choices":[{"message":{"role":"assistant","content":"{\"title\":\"定例\",\"summary\":\"要約本文\",\"decisions\":[{\"text\":\"試験導入する\",\"sourceStartMs\":12000}],\"taskCandidates\":[{\"title\":\"見積り\",\"priority\":\"high\"}],\"openQuestions\":[]}"}}]}"#,
+        );
+        let output = generate_summary(
+            &runtime_profile(&base, Some("sk-test")),
+            SummaryRequest {
+                model: "gpt-4o".to_string(),
+                system_prompt: "system".to_string(),
+                user_content: "[10:03|12000] 自分: 導入します".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(output.summary, "要約本文");
+        assert_eq!(output.decisions.len(), 1);
+        assert_eq!(output.task_candidates[0].priority, "high");
+        let req = rx.recv().unwrap();
+        assert!(req.head.starts_with("POST /v1/chat/completions"));
+        let body = String::from_utf8_lossy(&req.body);
+        assert!(body.contains("\"model\":\"gpt-4o\""));
+        assert!(body.contains("json_object"));
     }
 
     #[tokio::test]
