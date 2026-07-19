@@ -42,6 +42,18 @@ pub fn append_segment_to_file(
     Ok(())
 }
 
+/// 議事録AIブロックを対象ファイルへ書き込む（既存ブロックは置き換える）。
+pub fn write_ai_block_to_file(
+    path: &Path,
+    meeting_id: &str,
+    ai_block: &str,
+) -> Result<(), AppError> {
+    let file = read_text_file(path)?;
+    let updated = markdown::upsert_ai_block(&file.content, meeting_id, ai_block)?;
+    write_text_atomic(path, &updated, file.encoding, file.line_ending)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -89,5 +101,20 @@ mod tests {
         let segment_pos = content.find("発言内容").unwrap();
         let end_pos = content.find("<!-- inquivora:meeting:m-4:end -->").unwrap();
         assert!(segment_pos < end_pos);
+    }
+
+    #[test]
+    fn ai議事録ブロックを書き込み再生成で置き換える() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("meeting.md");
+        ensure_marker_block(&path, "m-5", "会議").unwrap();
+        let first = markdown::format_ai_block("m-5", "旧要約", &[], &[], &[]);
+        write_ai_block_to_file(&path, "m-5", &first).unwrap();
+        let second = markdown::format_ai_block("m-5", "新要約", &[], &[], &[]);
+        write_ai_block_to_file(&path, "m-5", &second).unwrap();
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(content.matches("## AI要約").count(), 1);
+        assert!(content.contains("新要約"));
+        assert!(!content.contains("旧要約"));
     }
 }

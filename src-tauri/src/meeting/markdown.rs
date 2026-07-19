@@ -65,6 +65,67 @@ pub fn insert_before_end_marker(
     Ok(result)
 }
 
+pub fn ai_start_marker(meeting_id: &str) -> String {
+    format!("<!-- inquivora:meeting:{meeting_id}:ai:start -->")
+}
+
+pub fn ai_end_marker(meeting_id: &str) -> String {
+    format!("<!-- inquivora:meeting:{meeting_id}:ai:end -->")
+}
+
+fn bullet_section(heading: &str, prefix: &str, items: &[String]) -> String {
+    let mut out = format!("## {heading}\n\n");
+    if items.is_empty() {
+        out.push_str("- （なし）\n");
+    } else {
+        for item in items {
+            out.push_str(prefix);
+            out.push_str(item.trim());
+            out.push('\n');
+        }
+    }
+    out
+}
+
+/// §11.4 追記テンプレートのAI議事録ブロックを生成する（AIマーカーで囲む）。
+pub fn format_ai_block(
+    meeting_id: &str,
+    summary: &str,
+    decisions: &[String],
+    tasks: &[String],
+    questions: &[String],
+) -> String {
+    format!(
+        "{}\n\n## AI要約\n\n{}\n\n{}\n{}\n{}\n{}",
+        ai_start_marker(meeting_id),
+        summary.trim(),
+        bullet_section("決定事項", "- ", decisions),
+        bullet_section("タスク候補", "- [ ] ", tasks),
+        bullet_section("未確認事項", "- ", questions),
+        ai_end_marker(meeting_id)
+    )
+}
+
+/// AI議事録ブロックを終了マーカー直前へ挿入する。既存ブロックがあれば置き換える。
+pub fn upsert_ai_block(
+    content: &str,
+    meeting_id: &str,
+    ai_block: &str,
+) -> Result<String, AppError> {
+    let ai_start = ai_start_marker(meeting_id);
+    let ai_end = ai_end_marker(meeting_id);
+    if let (Some(start), Some(end)) = (content.find(&ai_start), content.find(&ai_end)) {
+        if end > start {
+            let end = end + ai_end.len();
+            let mut result = content[..start].to_string();
+            result.push_str(ai_block.trim_end());
+            result.push_str(&content[end..]);
+            return Ok(result);
+        }
+    }
+    insert_before_end_marker(content, meeting_id, ai_block)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -137,5 +198,50 @@ mod tests {
     fn 終了マーカーがない場合はエラーになる() {
         let err = insert_before_end_marker("# メモ\n", "m-1", "### x\n").unwrap_err();
         assert_eq!(err.code, "FILE_CONFLICT");
+    }
+
+    #[test]
+    fn ai議事録ブロックはテンプレート形式で生成される() {
+        let block = format_ai_block(
+            "m-1",
+            "要約本文",
+            &["8月から試験導入".to_string()],
+            &["見積り作成".to_string()],
+            &[],
+        );
+        assert!(block.starts_with("<!-- inquivora:meeting:m-1:ai:start -->"));
+        assert!(block.contains("## AI要約\n\n要約本文"));
+        assert!(block.contains("## 決定事項\n\n- 8月から試験導入"));
+        assert!(block.contains("## タスク候補\n\n- [ ] 見積り作成"));
+        assert!(block.contains("## 未確認事項\n\n- （なし）"));
+        assert!(block.trim_end().ends_with("<!-- inquivora:meeting:m-1:ai:end -->"));
+    }
+
+    #[test]
+    fn ai議事録ブロックは終了マーカー前に挿入される() {
+        let content = format!(
+            "# メモ\n\n{}\n\n## 文字起こし\n\n{}\n",
+            start_marker("m-1"),
+            end_marker("m-1")
+        );
+        let block = format_ai_block("m-1", "要約", &[], &[], &[]);
+        let updated = upsert_ai_block(&content, "m-1", &block).unwrap();
+        let ai_pos = updated.find("## AI要約").unwrap();
+        let end_pos = updated.find(&end_marker("m-1")).unwrap();
+        assert!(ai_pos < end_pos);
+    }
+
+    #[test]
+    fn ai議事録ブロックは再生成で置き換えられ二重化しない() {
+        let content = format!(
+            "# メモ\n\n{}\n\n## 文字起こし\n\n{}\n",
+            start_marker("m-1"),
+            end_marker("m-1")
+        );
+        let first = upsert_ai_block(&content, "m-1", &format_ai_block("m-1", "旧要約", &[], &[], &[])).unwrap();
+        let second = upsert_ai_block(&first, "m-1", &format_ai_block("m-1", "新要約", &[], &[], &[])).unwrap();
+        assert_eq!(second.matches("## AI要約").count(), 1);
+        assert!(second.contains("新要約"));
+        assert!(!second.contains("旧要約"));
     }
 }
