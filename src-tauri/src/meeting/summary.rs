@@ -1,7 +1,53 @@
+use rusqlite::Connection;
+
 use crate::database::meetings::{Meeting, TranscriptSegment};
+use crate::database::providers::{self, ApiProviderProfile};
+use crate::error::AppError;
 use crate::meeting::markdown;
 
 pub const MEETING_SUMMARY_FEATURE: &str = "meeting.summary";
+
+fn summary_not_configured() -> AppError {
+    AppError::new(
+        "SUMMARY_NOT_CONFIGURED",
+        "議事録の生成にはAPIプロバイダーの設定が必要です。設定画面のAI設定で「議事録・タスク抽出」にProviderとモデルを割り当ててください",
+        false,
+    )
+}
+
+/// 議事録生成の経路解決。文字起こしと異なりローカルフォールバックは無く、
+/// APIのFeature Binding（meeting.summary）が有効な場合のみ生成できる。
+pub fn resolve_summary_provider(
+    conn: &Connection,
+) -> Result<(ApiProviderProfile, String), AppError> {
+    let binding = providers::get_binding(conn, MEETING_SUMMARY_FEATURE)?;
+    let (provider_id, model) = binding
+        .and_then(|b| match (b.provider_profile_id, b.model_id) {
+            (Some(id), Some(model)) => Some((id, model)),
+            _ => None,
+        })
+        .ok_or_else(summary_not_configured)?;
+    let profile = providers::get_provider(conn, &provider_id)?;
+    if !profile.enabled {
+        return Err(AppError::new(
+            "API_PROVIDER_DISABLED",
+            "議事録生成のProviderが無効化されています。設定画面で有効化してください",
+            false,
+        ));
+    }
+    Ok((profile, model))
+}
+
+/// 議事録生成が可能か（API設定済みか）を返す。UIのボタン活性判定に使う。
+pub fn summary_available(conn: &Connection) -> Result<bool, AppError> {
+    match resolve_summary_provider(conn) {
+        Ok(_) => Ok(true),
+        Err(err) if err.code == "SUMMARY_NOT_CONFIGURED" || err.code == "API_PROVIDER_DISABLED" => {
+            Ok(false)
+        }
+        Err(err) => Err(err),
+    }
+}
 
 /// AIへ渡す発話ログを「[HH:MM|開始ms] 話者: 本文」形式へ整形する。
 pub fn build_transcript_text(meeting: &Meeting, segments: &[TranscriptSegment]) -> String {
