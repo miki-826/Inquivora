@@ -1,3 +1,4 @@
+pub mod audio;
 pub mod dedupe;
 pub mod files;
 pub mod markdown;

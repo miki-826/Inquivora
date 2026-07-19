@@ -13,7 +13,7 @@ use crate::database::jobs;
 use crate::database::meetings::{self, Meeting, MeetingStatus, TranscriptSegment};
 use crate::error::AppError;
 use crate::meeting::summary::{self, MEETING_SUMMARY_FEATURE};
-use crate::meeting::{files, markdown, session};
+use crate::meeting::{audio, files, markdown, session};
 use crate::search as indexer;
 use crate::whisper;
 use crate::DbState;
@@ -155,11 +155,53 @@ pub fn meeting_delete(app: AppHandle, meeting_id: String) -> Result<(), AppError
     if session::has_session(&app, &meeting_id) {
         let _ = session::send_control(&app, &meeting_id, "stop");
     }
+    if let Ok(dir) = audio::meeting_audio_dir(&app, &meeting_id) {
+        let _ = std::fs::remove_dir_all(&dir);
+    }
     let state = app.state::<DbState>();
     let conn = state.0.lock().map_err(lock_error)?;
     jobs::cancel_jobs_for_entity(&conn, &meeting_id)?;
     let _ = indexer::remove_entity(&conn, indexer::TYPE_MEETING, &meeting_id);
     meetings::delete_meeting(&conn, &meeting_id)
+}
+
+/// 会議に録音チャンクが残っているかを返す。
+#[tauri::command]
+pub fn meeting_has_audio(app: AppHandle, meeting_id: String) -> Result<bool, AppError> {
+    let dir = audio::meeting_audio_dir(&app, &meeting_id)?;
+    let has = std::fs::read_dir(&dir)
+        .map(|mut entries| entries.any(|e| e.is_ok()))
+        .unwrap_or(false);
+    Ok(has)
+}
+
+/// 会議の録音を音源ごとに1つのWAVへ書き出し、書き出したファイルパスを返す。
+#[tauri::command]
+pub fn meeting_export_recording(
+    app: AppHandle,
+    meeting_id: String,
+) -> Result<Vec<String>, AppError> {
+    let dir = audio::meeting_audio_dir(&app, &meeting_id)?;
+    let segments = {
+        let state = app.state::<DbState>();
+        let conn = state.0.lock().map_err(lock_error)?;
+        meetings::list_segments(&conn, &meeting_id)?
+    };
+    audio::export_recording(&dir, &meeting_id, &segments)
+}
+
+/// 録音フォルダをエクスプローラーで開く。
+#[tauri::command]
+pub fn meeting_reveal_audio(app: AppHandle, meeting_id: String) -> Result<(), AppError> {
+    let dir = audio::meeting_audio_dir(&app, &meeting_id)?;
+    if !dir.is_dir() {
+        return Err(AppError::new("MEETING_NO_AUDIO", "録音フォルダがありません", false));
+    }
+    std::process::Command::new("explorer.exe")
+        .arg(dir.as_os_str())
+        .spawn()
+        .map_err(|e| AppError::new("FILE_IO_ERROR", format!("エクスプローラーを起動できません: {e}"), true))?;
+    Ok(())
 }
 
 #[tauri::command]

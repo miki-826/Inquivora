@@ -98,6 +98,19 @@ export async function isTranscriptionReady(): Promise<boolean> {
   return (await invoke("meeting_transcription_ready")) === true;
 }
 
+export async function meetingHasAudio(meetingId: string): Promise<boolean> {
+  return (await invoke("meeting_has_audio", { meetingId })) === true;
+}
+
+export async function exportMeetingRecording(meetingId: string): Promise<string[]> {
+  const value = await invoke("meeting_export_recording", { meetingId });
+  return Array.isArray(value) ? (value as string[]) : [];
+}
+
+export async function revealMeetingAudio(meetingId: string): Promise<void> {
+  await invoke("meeting_reveal_audio", { meetingId });
+}
+
 export async function generateSummary(meetingId: string): Promise<MeetingSummaryResult> {
   return meetingSummaryResultSchema.parse(await invoke("meeting_generate_summary", { meetingId }));
 }

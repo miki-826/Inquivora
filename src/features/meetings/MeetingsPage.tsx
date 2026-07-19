@@ -3,8 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { PanePlaceholder } from "../../components/common/PanePlaceholder";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
 import {
+  exportMeetingRecording,
   isTranscriptionReady,
   listAudioDevices,
+  meetingHasAudio,
+  revealMeetingAudio,
   type AudioDevice,
 } from "../../services/meetings";
 import { loadSetting, saveSetting } from "../../services/settings";
@@ -408,6 +411,60 @@ function MeetingList() {
   );
 }
 
+function RecordingActions({ meetingId }: { meetingId: string }) {
+  const [hasAudio, setHasAudio] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void meetingHasAudio(meetingId)
+      .then((has) => {
+        if (!cancelled) setHasAudio(has);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [meetingId]);
+
+  if (!hasAudio) {
+    return null;
+  }
+
+  const exportAndReveal = async () => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const files = await exportMeetingRecording(meetingId);
+      setMessage(`録音を書き出しました（${files.length}ファイル）`);
+      await revealMeetingAudio(meetingId);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="meeting-recording">
+      <h3 className="meeting-recording__title">録音</h3>
+      <p className="meeting-recording__note">
+        この会議の録音（マイク・PC音声）が保存されています。書き出すと音源ごとに1つのWAVへまとめ、フォルダを開きます。
+      </p>
+      <div className="meeting-recording__actions">
+        <button type="button" disabled={busy} onClick={() => void exportAndReveal()}>
+          {busy ? "書き出し中…" : "録音を書き出して開く"}
+        </button>
+        <button type="button" onClick={() => void revealMeetingAudio(meetingId)}>
+          録音フォルダを開く
+        </button>
+      </div>
+      {message && <p className="meeting-recording__message">{message}</p>}
+    </div>
+  );
+}
+
 function SelectedMeetingView() {
   const meetings = useMeetingStore((s) => s.meetings);
   const selectedMeetingId = useMeetingStore((s) => s.selectedMeetingId);
@@ -431,6 +488,7 @@ function SelectedMeetingView() {
         </span>
       </div>
       <p className="meeting-active__file">{meeting.targetFilePath}</p>
+      <RecordingActions meetingId={meeting.id} />
       <SegmentList segments={segments} />
     </div>
   );
