@@ -168,6 +168,16 @@ pub fn fail_job(
     Ok(())
 }
 
+/// §DoD 起動時のクラッシュ復旧。前回の実行中に中断された処理中ジョブを
+/// pendingへ戻し、ワーカーが再処理できるようにする。戻した件数を返す。
+pub fn requeue_interrupted_jobs(conn: &Connection) -> Result<usize, AppError> {
+    let affected = conn.execute(
+        "UPDATE api_jobs SET status = 'pending', updated_at = ?1 WHERE status = 'processing'",
+        [Utc::now().to_rfc3339()],
+    )?;
+    Ok(affected)
+}
+
 pub fn cancel_jobs_for_entity(conn: &Connection, entity_id: &str) -> Result<(), AppError> {
     conn.execute(
         "UPDATE api_jobs SET status = 'cancelled', updated_at = ?2
@@ -303,6 +313,26 @@ mod tests {
             .unwrap();
         assert_eq!(status, "failed");
         assert_eq!(last_error.as_deref(), Some("API_AUTH_FAILED"));
+    }
+
+    #[test]
+    fn 中断された処理中ジョブは起動時にpendingへ戻る() {
+        let (_dir, conn) = open_temp_db();
+        let job = enqueue_job(&conn, sample_input()).unwrap();
+        mark_job_processing(&conn, &job.id).unwrap();
+        assert!(next_pending_job(&conn).unwrap().is_none());
+        let requeued = requeue_interrupted_jobs(&conn).unwrap();
+        assert_eq!(requeued, 1);
+        let next = next_pending_job(&conn).unwrap().unwrap();
+        assert_eq!(next.id, job.id);
+    }
+
+    #[test]
+    fn 完了ジョブは復旧対象にしない() {
+        let (_dir, conn) = open_temp_db();
+        let job = enqueue_job(&conn, sample_input()).unwrap();
+        complete_job(&conn, &job.id).unwrap();
+        assert_eq!(requeue_interrupted_jobs(&conn).unwrap(), 0);
     }
 
     #[test]

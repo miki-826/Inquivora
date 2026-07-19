@@ -36,6 +36,10 @@ pub fn run() {
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             let conn = database::open_database(&data_dir.join("inquivora.db"))?;
+            // §DoD クラッシュ復旧: 前回中断された処理中ジョブをpendingへ戻す
+            if let Err(err) = database::jobs::requeue_interrupted_jobs(&conn) {
+                eprintln!("中断ジョブの復旧に失敗: {}", err.message);
+            }
             app.manage(DbState(Mutex::new(conn)));
             app.manage(commands::workspace::WorkspaceState::default());
             tray::setup_tray(app.handle())?;
@@ -132,6 +136,8 @@ pub fn run() {
             commands::whisper::whisper_model_select,
             commands::whisper::whisper_model_download,
             commands::whisper::whisper_model_delete,
+            commands::search::search_global,
+            commands::search::search_reindex_workspace,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
