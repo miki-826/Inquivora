@@ -56,6 +56,12 @@ public static class WhisperProtocol
         }
     }
 
+    /// <summary>
+    /// whisper.cppのトークン分断で混入するU+FFFDを除去する。
+    /// </summary>
+    public static string SanitizeText(string text) =>
+        text.Replace("�", string.Empty).Trim();
+
     private static string Serialize(object value) =>
         JsonSerializer.Serialize(value, value.GetType(), Options);
 

@@ -87,6 +87,6 @@ public static class WhisperMode
             }
         });
         task.GetAwaiter().GetResult();
-        return builder.ToString().Trim();
+        return WhisperProtocol.SanitizeText(builder.ToString());
     }
 }
