@@ -394,6 +394,48 @@ mod tests {
     }
 
     #[test]
+    fn 衝突しない名前は変えずに使う() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(unique_destination(dir.path(), "資料.md"), dir.path().join("資料.md"));
+    }
+
+    #[test]
+    fn 衝突する名前は連番を付ける() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("資料.md"), "x").unwrap();
+        assert_eq!(
+            unique_destination(dir.path(), "資料.md"),
+            dir.path().join("資料 (2).md")
+        );
+        fs::write(dir.path().join("資料 (2).md"), "x").unwrap();
+        assert_eq!(
+            unique_destination(dir.path(), "資料.md"),
+            dir.path().join("資料 (3).md")
+        );
+    }
+
+    #[test]
+    fn 拡張子なしの衝突名も連番を付ける() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("README"), "x").unwrap();
+        assert_eq!(
+            unique_destination(dir.path(), "README"),
+            dir.path().join("README (2)")
+        );
+    }
+
+    #[test]
+    fn バイト列を取り込み衝突時は連番で保存する() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = import_file(dir.path(), "画像.png", &[1u8, 2, 3]).unwrap();
+        assert_eq!(first, dir.path().join("画像.png"));
+        assert_eq!(fs::read(&first).unwrap(), vec![1u8, 2, 3]);
+        let second = import_file(dir.path(), "画像.png", &[9u8]).unwrap();
+        assert_eq!(second, dir.path().join("画像 (2).png"));
+        assert_eq!(fs::read(&second).unwrap(), vec![9u8]);
+    }
+
+    #[test]
     fn base64でファイルを読める() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("img.png");
