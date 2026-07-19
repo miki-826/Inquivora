@@ -6,6 +6,7 @@ import {
   parentPath,
   type TreeEntry,
 } from "../features/workspace/treeModel";
+import { reindexWorkspace } from "../services/search";
 import { loadSetting, saveSetting } from "../services/settings";
 import * as ws from "../services/workspace";
 import type { WorkspaceRecord } from "../services/workspace";
@@ -138,6 +139,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
           expanded.map((folder) => loadChildrenOf(folder).catch(() => undefined)),
         );
         await get().loadRecent();
+        // 開いたワークスペースを背景で索引する（ボタン不要・UIをブロックしない）
+        void reindexWorkspace().catch((err) => console.error("検索索引の構築に失敗", err));
       });
     },
 

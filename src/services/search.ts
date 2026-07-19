@@ -11,7 +11,13 @@ export async function searchGlobal(
   return parseSearchResults(value);
 }
 
-export async function reindexWorkspace(): Promise<number> {
-  const value = await invoke("search_reindex_workspace");
-  return typeof value === "number" ? value : 0;
+/// 索引の全再構築を要求する。実処理はバックエンドの別スレッドで行われ、
+/// 進捗は search:index-started / search:index-done イベントで通知される。
+export async function reindexWorkspace(): Promise<void> {
+  await invoke("search_reindex_workspace");
+}
+
+export async function searchIndexPaths(paths: string[]): Promise<void> {
+  if (paths.length === 0) return;
+  await invoke("search_index_paths", { paths });
 }

@@ -4,6 +4,7 @@ import { Toolbar } from "../components/layout/Toolbar";
 import { VerticalNav } from "../components/layout/VerticalNav";
 import { StatusBar } from "../components/statusbar/StatusBar";
 import { useDeepLink } from "../features/notifications/useDeepLink";
+import { initSearchIndexListener } from "../stores/searchIndexListener";
 import { initMeetingListeners } from "../stores/useMeetingStore";
 import { useSettingsStore } from "../stores/useSettingsStore";
 
@@ -14,6 +15,7 @@ export function AppShell() {
 
   useEffect(() => {
     initMeetingListeners();
+    initSearchIndexListener();
   }, []);
 
   useEffect(() => {

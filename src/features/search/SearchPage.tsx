@@ -1,8 +1,9 @@
-import { RefreshCw, Search } from "lucide-react";
+import { listen } from "@tauri-apps/api/event";
+import { Search } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
-import { reindexWorkspace, searchGlobal } from "../../services/search";
+import { searchGlobal } from "../../services/search";
 import { useEditorStore } from "../../stores/useEditorStore";
 import { useMeetingStore } from "../../stores/useMeetingStore";
 import {
@@ -30,8 +31,7 @@ export function SearchPage() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searched, setSearched] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [reindexing, setReindexing] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [indexing, setIndexing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -46,6 +46,15 @@ export function SearchPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    const started = listen("search:index-started", () => setIndexing(true));
+    const done = listen("search:index-done", () => setIndexing(false));
+    return () => {
+      void started.then((un) => un());
+      void done.then((un) => un());
+    };
   }, []);
 
   const runSearch = useCallback(async () => {
@@ -77,21 +86,6 @@ export function SearchPage() {
     setSelectedTypes((prev) =>
       prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type],
     );
-  };
-
-  const reindex = async () => {
-    setReindexing(true);
-    setMessage(null);
-    setError(null);
-    try {
-      const count = await reindexWorkspace();
-      setMessage(`${count}件をインデックスしました`);
-      if (query.trim()) void runSearch();
-    } catch (err) {
-      setError(messageOf(err));
-    } finally {
-      setReindexing(false);
-    }
   };
 
   const openResult = async (result: SearchResult) => {
@@ -130,15 +124,7 @@ export function SearchPage() {
               }}
             />
           </div>
-          <button
-            type="button"
-            className="search-page__reindex"
-            disabled={reindexing}
-            onClick={() => void reindex()}
-          >
-            <RefreshCw size={14} aria-hidden />
-            {reindexing ? "再構築中…" : "インデックス再構築"}
-          </button>
+          {indexing && <span className="search-page__indexing">インデックス作成中…</span>}
         </div>
 
         <div className="search-page__filters">
@@ -154,7 +140,6 @@ export function SearchPage() {
           ))}
         </div>
 
-        {message && <p className="search-page__message">{message}</p>}
         {error && (
           <p className="search-page__error" role="alert">
             {error}
