@@ -3,7 +3,6 @@ pub mod commands;
 pub mod database;
 pub mod error;
 pub mod meeting;
-pub mod discord;
 pub mod whisper;
 pub mod notifications;
 pub mod tray;
@@ -125,10 +124,6 @@ pub fn run() {
             commands::whisper::whisper_model_select,
             commands::whisper::whisper_model_download,
             commands::whisper::whisper_model_delete,
-            commands::discord::discord_webhook_set,
-            commands::discord::discord_webhook_has,
-            commands::discord::discord_webhook_delete,
-            commands::discord::discord_webhook_test,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
