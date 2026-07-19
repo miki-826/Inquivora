@@ -1,5 +1,6 @@
 pub mod events;
 pub mod jobs;
+pub mod meeting_ai;
 pub mod meetings;
 pub mod providers;
 pub mod reminders;
