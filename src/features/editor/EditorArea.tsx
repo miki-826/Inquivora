@@ -28,6 +28,7 @@ function TabBar() {
             role="tab"
             aria-selected={isActive}
             tabIndex={0}
+            draggable
             className={[
               "editor-tab",
               isActive ? "editor-tab--active" : "",
@@ -36,6 +37,22 @@ function TabBar() {
               .filter(Boolean)
               .join(" ")}
             title={saveErrors[tab.id] ?? tab.path}
+            onDragStart={(e) => {
+              e.dataTransfer.setData("text/inquivora-tab", tab.id);
+              e.dataTransfer.effectAllowed = "move";
+            }}
+            onDragOver={(e) => {
+              if (e.dataTransfer.types.includes("text/inquivora-tab")) {
+                e.preventDefault();
+              }
+            }}
+            onDrop={(e) => {
+              const fromId = e.dataTransfer.getData("text/inquivora-tab");
+              if (fromId) {
+                e.preventDefault();
+                store.getState().reorderTab(fromId, tab.id);
+              }
+            }}
             onClick={() => store.getState().activateTab(tab.id)}
             onKeyDown={(e) => {
               if (e.key === "Enter") store.getState().activateTab(tab.id);

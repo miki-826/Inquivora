@@ -4,6 +4,7 @@ import {
   addOrActivateTab,
   closeTab as closeTabModel,
   languageForExtension,
+  reorderTabs,
   viewTypeForFile,
   type EditorTab,
 } from "../features/editor/editorModel";
@@ -40,6 +41,7 @@ type EditorStore = {
   openFile: (entry: TreeEntry) => Promise<void>;
   openPath: (absolutePath: string, options?: Partial<Pick<EditorTab, "isPinned" | "cursorLine" | "cursorColumn">>) => Promise<void>;
   activateTab: (tabId: string) => void;
+  reorderTab: (fromId: string, toId: string) => void;
   closeTab: (tabId: string) => Promise<void>;
   closeAllTabs: () => void;
   updateContent: (tabId: string, content: string) => void;
@@ -210,6 +212,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
     activateTab: (tabId) => {
       set({ activeTabId: tabId });
+    },
+
+    reorderTab: (fromId, toId) => {
+      set((state) => ({ tabs: reorderTabs(state.tabs, fromId, toId) }));
+      schedulePersistTabs();
     },
 
     closeTab: async (tabId) => {

@@ -80,6 +80,19 @@ export function addOrActivateTab(
   return { tabs: [...tabs, newTab], activeTabId: newTab.id };
 }
 
+/// ドラッグ元タブ(fromId)をドロップ先タブ(toId)の位置へ移動した配列を返す。
+export function reorderTabs(tabs: EditorTab[], fromId: string, toId: string): EditorTab[] {
+  const fromIndex = tabs.findIndex((t) => t.id === fromId);
+  const toIndex = tabs.findIndex((t) => t.id === toId);
+  if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) {
+    return tabs;
+  }
+  const next = [...tabs];
+  const [moved] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, moved);
+  return next;
+}
+
 export function closeTab(
   tabs: EditorTab[],
   activeTabId: string | null,
