@@ -46,3 +46,6 @@ local-data/
 .idea/
 .DS_Store
 Thumbs.db
+
+# 動作確認で生成された会議メモ
+/*_会議.md
