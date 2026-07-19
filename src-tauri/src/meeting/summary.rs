@@ -123,4 +123,87 @@ mod tests {
         let content = build_user_content(&meeting(), "本文", "   ");
         assert!(!content.contains("ユーザーメモ"));
     }
+
+    use crate::database::open_database;
+    use crate::database::providers::{self, BindingInput, ProviderInput};
+    use rusqlite::Connection;
+
+    fn temp_conn() -> (tempfile::TempDir, Connection) {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open_database(&dir.path().join("test.db")).unwrap();
+        (dir, conn)
+    }
+
+    fn provider(conn: &Connection) -> String {
+        providers::create_provider(
+            conn,
+            ProviderInput {
+                display_name: "OpenAI".to_string(),
+                provider_type: "openai".to_string(),
+                base_url: "https://api.openai.com/v1".to_string(),
+                auth_type: "bearer".to_string(),
+                organization_id: None,
+                project_id: None,
+                default_headers: Default::default(),
+                timeout_ms: 60000,
+                capabilities: vec!["meeting.summary".to_string()],
+            },
+        )
+        .unwrap()
+        .id
+    }
+
+    fn bind_summary(conn: &Connection, provider_id: &str, model: Option<&str>) {
+        providers::set_binding(
+            conn,
+            MEETING_SUMMARY_FEATURE,
+            BindingInput {
+                provider_profile_id: Some(provider_id.to_string()),
+                model_id: model.map(String::from),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn binding未設定なら設定不足エラーでローカルへ落ちない() {
+        let (_dir, conn) = temp_conn();
+        let err = resolve_summary_provider(&conn).unwrap_err();
+        assert_eq!(err.code, "SUMMARY_NOT_CONFIGURED");
+        assert!(!summary_available(&conn).unwrap());
+    }
+
+    #[test]
+    fn binding設定済みで有効ならprovider_and_modelを返す() {
+        let (_dir, conn) = temp_conn();
+        let id = provider(&conn);
+        bind_summary(&conn, &id, Some("gpt-4o"));
+        let (profile, model) = resolve_summary_provider(&conn).unwrap();
+        assert_eq!(profile.id, id);
+        assert_eq!(model, "gpt-4o");
+        assert!(summary_available(&conn).unwrap());
+    }
+
+    #[test]
+    fn モデル未指定は設定不足として扱う() {
+        let (_dir, conn) = temp_conn();
+        let id = provider(&conn);
+        bind_summary(&conn, &id, None);
+        assert_eq!(
+            resolve_summary_provider(&conn).unwrap_err().code,
+            "SUMMARY_NOT_CONFIGURED"
+        );
+    }
+
+    #[test]
+    fn provider無効なら無効エラーでローカルへ落ちない() {
+        let (_dir, conn) = temp_conn();
+        let id = provider(&conn);
+        bind_summary(&conn, &id, Some("gpt-4o"));
+        providers::set_provider_enabled(&conn, &id, false).unwrap();
+        let err = resolve_summary_provider(&conn).unwrap_err();
+        assert_eq!(err.code, "API_PROVIDER_DISABLED");
+        assert!(!summary_available(&conn).unwrap());
+    }
 }
