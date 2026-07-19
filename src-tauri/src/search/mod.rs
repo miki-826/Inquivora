@@ -92,6 +92,24 @@ pub fn index_meeting(
     search::upsert_document(conn, &meeting_doc(meeting, segments))
 }
 
+/// テキストファイルを索引へ登録する。Editカテゴリ以外は索引しない（trueで登録実施）。
+pub fn index_file(
+    conn: &Connection,
+    abs_path: &str,
+    name: &str,
+    content: &str,
+) -> Result<bool, AppError> {
+    let is_text = Path::new(name)
+        .extension()
+        .map(|e| filetype::category_for_extension(&e.to_string_lossy()) == FileCategory::Edit)
+        .unwrap_or(false);
+    if !is_text {
+        return Ok(false);
+    }
+    search::upsert_document(conn, &file_doc(abs_path, name, content))?;
+    Ok(true)
+}
+
 pub fn remove_entity(conn: &Connection, entity_type: &str, entity_id: &str) -> Result<(), AppError> {
     search::delete_document(conn, entity_type, entity_id)
 }
