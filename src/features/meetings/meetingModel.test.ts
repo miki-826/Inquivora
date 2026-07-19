@@ -4,6 +4,7 @@ import {
   insertBeforeEndMarker,
   meetingStatusLabel,
   parseMeeting,
+  pickDeviceId,
 } from "./meetingModel";
 
 describe("parseMeeting", () => {
@@ -74,5 +75,29 @@ describe("defaultMeetingFileName", () => {
     expect(defaultMeetingFileName("  ", new Date("2026-07-18T10:00:00+09:00"))).toBe(
       "2026-07-18_会議.md",
     );
+  });
+});
+
+describe("pickDeviceId", () => {
+  const devices = [
+    { id: "mic-guid-1", name: "ヘッドセット", isDefault: false },
+    { id: "mic-guid-2", name: "CABLE Output", isDefault: true },
+  ];
+
+  it("保存済みIDが一覧にあればそれを返す", () => {
+    expect(pickDeviceId("mic-guid-1", devices)).toBe("mic-guid-1");
+  });
+
+  it("保存済みIDが一覧になければdefaultへ戻す", () => {
+    expect(pickDeviceId("unplugged-guid", devices)).toBe("default");
+  });
+
+  it("未保存ならdefaultを返す", () => {
+    expect(pickDeviceId(null, devices)).toBe("default");
+    expect(pickDeviceId(undefined, devices)).toBe("default");
+  });
+
+  it("defaultはそのまま維持する", () => {
+    expect(pickDeviceId("default", devices)).toBe("default");
   });
 });
