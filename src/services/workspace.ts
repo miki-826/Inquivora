@@ -97,3 +97,11 @@ export function detectType(path: string): Promise<DetectedType> {
 export function readFileBase64(path: string): Promise<string> {
   return invoke("file_read_base64", { path });
 }
+
+export function importFile(
+  targetDir: string,
+  name: string,
+  contentsBase64: string,
+): Promise<void> {
+  return invoke("file_import", { targetDir, name, contentsBase64 });
+}

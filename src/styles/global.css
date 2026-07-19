@@ -370,6 +370,25 @@ button {
   outline-offset: -2px;
 }
 
+.file-tree__trash {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 6px 8px;
+  padding: 10px;
+  border: 2px dashed var(--color-danger, #d9534f);
+  border-radius: 6px;
+  color: var(--color-danger, #d9534f);
+  font-size: 12px;
+  background: var(--color-surface-subtle);
+}
+
+.file-tree__trash--hover {
+  background: var(--color-danger, #d9534f);
+  color: #fff;
+}
+
 .file-tree__chevron {
   display: inline-flex;
   width: 14px;

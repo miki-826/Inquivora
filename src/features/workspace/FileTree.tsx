@@ -10,6 +10,7 @@ import {
   Image,
   Package,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspaceStore } from "../../stores/useWorkspaceStore";
@@ -47,6 +48,8 @@ export function FileTree({ onOpenFile }: FileTreeProps) {
 
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [draggingPath, setDraggingPath] = useState<string | null>(null);
+  const [trashHover, setTrashHover] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -120,6 +123,16 @@ export function FileTree({ onOpenFile }: FileTreeProps) {
 
   const commitInput = () => {
     store.getState().commitEditing(inputValue);
+  };
+
+  const handleDropInto = (e: React.DragEvent, targetFolder: string) => {
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      void store.getState().importFiles(targetFolder, files);
+      return;
+    }
+    const source = e.dataTransfer.getData("text/inquivora-path");
+    if (source) void store.getState().moveByDrop(source, targetFolder);
   };
 
   const renderInput = (depth: number) => (
@@ -208,8 +221,7 @@ export function FileTree({ onOpenFile }: FileTreeProps) {
         onDrop={(e) => {
           e.preventDefault();
           setDropTarget(null);
-          const source = e.dataTransfer.getData("text/inquivora-path");
-          if (source) store.getState().moveByDrop(source, "");
+          handleDropInto(e, "");
         }}
       >
         <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
@@ -257,7 +269,9 @@ export function FileTree({ onOpenFile }: FileTreeProps) {
                   onDragStart={(e) => {
                     e.dataTransfer.setData("text/inquivora-path", entry.relativePath);
                     e.dataTransfer.effectAllowed = "move";
+                    setDraggingPath(entry.relativePath);
                   }}
+                  onDragEnd={() => setDraggingPath(null)}
                   onDragOver={(e) => {
                     if (!entry.isFolder) return;
                     e.preventDefault();
@@ -269,8 +283,7 @@ export function FileTree({ onOpenFile }: FileTreeProps) {
                     e.preventDefault();
                     e.stopPropagation();
                     setDropTarget(null);
-                    const source = e.dataTransfer.getData("text/inquivora-path");
-                    if (source) store.getState().moveByDrop(source, entry.relativePath);
+                    handleDropInto(e, entry.relativePath);
                   }}
                   onClick={() => {
                     store.getState().select(entry.relativePath);
@@ -311,6 +324,30 @@ export function FileTree({ onOpenFile }: FileTreeProps) {
           })}
         </div>
       </div>
+      {draggingPath && (
+        <div
+          className={`file-tree__trash${trashHover ? " file-tree__trash--hover" : ""}`}
+          role="button"
+          aria-label="ここへドラッグしてごみ箱へ移動"
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setTrashHover(true);
+          }}
+          onDragLeave={() => setTrashHover(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setTrashHover(false);
+            const source = e.dataTransfer.getData("text/inquivora-path");
+            setDraggingPath(null);
+            if (source) void store.getState().removeEntry(source);
+          }}
+        >
+          <Trash2 size={15} aria-hidden />
+          ここへドロップで削除（ごみ箱へ移動）
+        </div>
+      )}
       {menu && (
         <TreeContextMenu
           menu={menu}

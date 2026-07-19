@@ -41,6 +41,7 @@ type WorkspaceStore = {
   setClipboard: (relativePath: string, cut: boolean) => void;
   paste: (targetFolder: string) => Promise<void>;
   moveByDrop: (source: string, targetFolder: string) => Promise<void>;
+  importFiles: (targetFolder: string, files: File[]) => Promise<void>;
   copyPathToClipboard: (relativePath: string) => Promise<void>;
   reveal: (relativePath: string) => Promise<void>;
   openExternal: (relativePath: string) => Promise<void>;
@@ -53,6 +54,15 @@ function messageOf(error: unknown): string {
     return String((error as { message: unknown }).message);
   }
   return String(error);
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
 }
 
 function treeStateKey(workspaceId: string): string {
@@ -232,6 +242,17 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
           get().absolutePath(joinPath(targetFolder, name)),
         );
         await loadChildrenOf(parentPath(source));
+        await loadChildrenOf(targetFolder);
+      });
+    },
+
+    importFiles: async (targetFolder, files) => {
+      if (files.length === 0) return;
+      await runTreeAction(async () => {
+        for (const file of files) {
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          await ws.importFile(get().absolutePath(targetFolder), file.name, bytesToBase64(bytes));
+        }
         await loadChildrenOf(targetFolder);
       });
     },
