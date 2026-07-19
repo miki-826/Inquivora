@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   downloadPercent,
   formatModelSize,
+  modelHint,
   parseWhisperStatus,
 } from "./whisperModel";
 
@@ -36,6 +37,20 @@ describe("formatModelSize", () => {
     expect(formatModelSize(466)).toBe("約466MB");
     expect(formatModelSize(75)).toBe("約75MB");
     expect(formatModelSize(1500)).toBe("約1.5GB");
+  });
+});
+
+describe("modelHint", () => {
+  it("モデルごとに初心者向けの説明を返す", () => {
+    expect(modelHint("tiny").tagline).toContain("高速");
+    expect(modelHint("base").recommended).toBe(true);
+    expect(modelHint("small").tagline).toContain("高精度");
+  });
+
+  it("未知のモデルでも空でないtaglineを返し推奨ではない", () => {
+    const hint = modelHint("unknown-model");
+    expect(hint.tagline.length).toBeGreaterThan(0);
+    expect(hint.recommended).toBe(false);
   });
 });
 
