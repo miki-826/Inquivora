@@ -6,10 +6,14 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_shell::ShellExt;
 
+use crate::api::{credentials, http};
+use crate::database::meeting_ai::{self, MeetingDecision, TaskCandidate};
+use crate::database::providers::{self, UsageInput};
 use crate::database::jobs;
 use crate::database::meetings::{self, Meeting, MeetingStatus, TranscriptSegment};
 use crate::error::AppError;
-use crate::meeting::{files, session};
+use crate::meeting::summary::{self, MEETING_SUMMARY_FEATURE};
+use crate::meeting::{files, markdown, session};
 use crate::whisper;
 use crate::DbState;
 
@@ -204,4 +208,170 @@ pub async fn meeting_list_devices(app: AppHandle) -> Result<serde_json::Value, A
     };
     drop(child);
     result
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingSummaryResult {
+    pub summary: String,
+    pub decisions: Vec<MeetingDecision>,
+    pub task_candidates: Vec<TaskCandidate>,
+    pub open_questions: Vec<crate::api::client::AiOpenQuestion>,
+}
+
+/// 議事録生成が可能か（meeting.summaryのAPI設定が有効か）を返す。
+#[tauri::command]
+pub fn meeting_summary_available(state: State<'_, DbState>) -> Result<bool, AppError> {
+    let conn = state.0.lock().map_err(lock_error)?;
+    summary::summary_available(&conn)
+}
+
+#[tauri::command]
+pub fn meeting_list_decisions(
+    state: State<'_, DbState>,
+    meeting_id: String,
+) -> Result<Vec<MeetingDecision>, AppError> {
+    let conn = state.0.lock().map_err(lock_error)?;
+    meeting_ai::list_decisions(&conn, &meeting_id)
+}
+
+#[tauri::command]
+pub fn meeting_list_candidates(
+    state: State<'_, DbState>,
+    meeting_id: String,
+) -> Result<Vec<TaskCandidate>, AppError> {
+    let conn = state.0.lock().map_err(lock_error)?;
+    meeting_ai::list_candidates(&conn, &meeting_id)
+}
+
+fn record_summary_usage(
+    conn: &rusqlite::Connection,
+    provider_id: &str,
+    model: &str,
+    meeting_id: &str,
+    status: &str,
+    error_code: Option<String>,
+) {
+    let _ = providers::insert_usage(
+        conn,
+        UsageInput {
+            provider_profile_id: provider_id.to_string(),
+            feature_key: MEETING_SUMMARY_FEATURE.to_string(),
+            model_id: model.to_string(),
+            entity_id: Some(meeting_id.to_string()),
+            input_units: None,
+            output_units: None,
+            audio_duration_ms: None,
+            latency_ms: None,
+            status: status.to_string(),
+            error_code,
+        },
+    );
+}
+
+/// §11.3 議事録生成。API設定時のみ有効（ローカルWhisperでは生成しない）。
+#[tauri::command]
+pub async fn meeting_generate_summary(
+    app: AppHandle,
+    meeting_id: String,
+) -> Result<MeetingSummaryResult, AppError> {
+    let (meeting, segments, profile, model) = {
+        let state = app.state::<DbState>();
+        let conn = state.0.lock().map_err(lock_error)?;
+        let meeting = meetings::get_meeting(&conn, &meeting_id)?;
+        let segments = meetings::list_segments(&conn, &meeting_id)?;
+        if segments.is_empty() {
+            return Err(AppError::new(
+                "MEETING_NO_TRANSCRIPT",
+                "文字起こしがまだありません。録音・文字起こしの完了後に生成してください",
+                false,
+            ));
+        }
+        let (profile, model) = summary::resolve_summary_provider(&conn)?;
+        (meeting, segments, profile, model)
+    };
+
+    let secret = credentials::get_secret(&app, &profile.id).await?;
+    if secret.is_none() {
+        return Err(AppError::new(
+            "API_AUTH_FAILED",
+            "APIキーが設定されていません。設定画面で登録してください",
+            false,
+        ));
+    }
+    let transcript_text = summary::build_transcript_text(&meeting, &segments);
+    let request = http::SummaryRequest {
+        model: model.clone(),
+        system_prompt: summary::system_prompt(),
+        user_content: summary::build_user_content(&meeting, &transcript_text, ""),
+    };
+    let runtime = http::runtime_from_profile(&profile, secret);
+    let output = match http::generate_summary(&runtime, request).await {
+        Ok(output) => output,
+        Err(err) => {
+            let state = app.state::<DbState>();
+            if let Ok(conn) = state.0.lock() {
+                record_summary_usage(&conn, &profile.id, &model, &meeting_id, "error", Some(err.code.clone()));
+            }
+            return Err(err);
+        }
+    };
+
+    let decision_inputs: Vec<meeting_ai::DecisionInput> = output
+        .decisions
+        .iter()
+        .map(|d| meeting_ai::DecisionInput {
+            text: d.text.clone(),
+            source_start_ms: d.source_start_ms,
+        })
+        .collect();
+    let candidate_inputs: Vec<meeting_ai::CandidateInput> = output
+        .task_candidates
+        .iter()
+        .map(|c| meeting_ai::CandidateInput {
+            title: c.title.clone(),
+            description: c.description.clone(),
+            due_at: c.due_at.clone(),
+            priority: c.priority.clone(),
+            assignee: c.assignee.clone(),
+            source_start_ms: c.source_start_ms,
+        })
+        .collect();
+
+    let (decisions, task_candidates) = {
+        let state = app.state::<DbState>();
+        let conn = state.0.lock().map_err(lock_error)?;
+        meeting_ai::set_summary(&conn, &meeting_id, &output.summary)?;
+        meeting_ai::replace_decisions(&conn, &meeting_id, &decision_inputs)?;
+        meeting_ai::replace_candidates(&conn, &meeting_id, &candidate_inputs)?;
+        record_summary_usage(&conn, &profile.id, &model, &meeting_id, "success", None);
+        let decisions = meeting_ai::list_decisions(&conn, &meeting_id)?;
+        let task_candidates = meeting_ai::list_candidates(&conn, &meeting_id)?;
+        (decisions, task_candidates)
+    };
+
+    let decision_lines: Vec<String> = output.decisions.iter().map(|d| d.text.clone()).collect();
+    let task_lines: Vec<String> = output.task_candidates.iter().map(|c| c.title.clone()).collect();
+    let question_lines: Vec<String> = output.open_questions.iter().map(|q| q.text.clone()).collect();
+    let ai_block = markdown::format_ai_block(
+        &meeting_id,
+        &output.summary,
+        &decision_lines,
+        &task_lines,
+        &question_lines,
+    );
+    match files::write_ai_block_to_file(Path::new(&meeting.target_file_path), &meeting_id, &ai_block) {
+        Ok(()) => {
+            let _ = app.emit("meeting:file-updated", json!({ "path": meeting.target_file_path }));
+        }
+        Err(err) => eprintln!("議事録ブロックの追記に失敗: {}", err.message),
+    }
+    let _ = app.emit("meeting:summary-updated", json!({ "meetingId": meeting_id }));
+
+    Ok(MeetingSummaryResult {
+        summary: output.summary,
+        decisions,
+        task_candidates,
+        open_questions: output.open_questions,
+    })
 }

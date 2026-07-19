@@ -1,11 +1,20 @@
+use serde::Deserialize;
 use tauri::State;
 
-use crate::database::settings;
-use crate::database::tasks::{self, Task, TaskFilter, TaskInput, TaskPatch};
+use crate::database::tasks::{self, Task, TaskFilter, TaskInput, TaskPatch, TaskPriority};
+use crate::database::{meeting_ai, meetings, settings};
 use crate::error::AppError;
 use crate::notifications::schedule::parse_settings;
 use crate::notifications::sync::sync_after_task_saved;
 use crate::DbState;
+
+fn priority_from_str(value: &str) -> TaskPriority {
+    match value {
+        "high" => TaskPriority::High,
+        "low" => TaskPriority::Low,
+        _ => TaskPriority::Medium,
+    }
+}
 
 fn with_conn<T>(
     state: &State<'_, DbState>,
@@ -82,6 +91,55 @@ pub fn task_reopen(state: State<'_, DbState>, id: String) -> Result<Task, AppErr
         let old = tasks::get_task(conn, &id)?;
         let task = tasks::reopen_task(conn, &id)?;
         sync_reminders(conn, Some(&old), &task)?;
+        Ok(task)
+    })
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CandidateAcceptPatch {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub due_at_utc: Option<String>,
+    pub priority: Option<TaskPriority>,
+    pub assignee: Option<String>,
+}
+
+/// §10.11 タスク候補を正式タスクへ登録し、候補を承認済みにする。
+#[tauri::command]
+pub fn task_accept_candidate(
+    state: State<'_, DbState>,
+    candidate_id: String,
+    patch: Option<CandidateAcceptPatch>,
+) -> Result<Task, AppError> {
+    let patch = patch.unwrap_or_default();
+    with_conn(&state, |conn| {
+        let candidate = meeting_ai::get_candidate(conn, &candidate_id)?;
+        if candidate.status == "accepted" {
+            return Err(AppError::new(
+                "CANDIDATE_ALREADY_ACCEPTED",
+                "このタスク候補はすでに登録済みです",
+                false,
+            ));
+        }
+        let meeting = meetings::get_meeting(conn, &candidate.meeting_id).ok();
+        let input = TaskInput {
+            title: patch.title.unwrap_or(candidate.title),
+            description: patch.description.or(candidate.description),
+            due_at_utc: patch.due_at_utc.or(candidate.due_at),
+            timezone: "Asia/Tokyo".to_string(),
+            priority: patch
+                .priority
+                .unwrap_or_else(|| priority_from_str(&candidate.priority)),
+            status: None,
+            assignee: patch.assignee.or(candidate.assignee),
+            project_name: None,
+            meeting_id: Some(candidate.meeting_id.clone()),
+            linked_file_path: meeting.map(|m| m.target_file_path),
+        };
+        let task = tasks::create_task(conn, &input)?;
+        sync_reminders(conn, None, &task)?;
+        meeting_ai::set_candidate_status(conn, &candidate_id, "accepted")?;
         Ok(task)
     })
 }
