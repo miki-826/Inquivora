@@ -13,6 +13,8 @@ export type MeetingStartInput = {
   workspaceId?: string | null;
   mic: boolean;
   loopback: boolean;
+  micDeviceId?: string;
+  loopbackDeviceId?: string;
   chunkSeconds?: number;
 };
 

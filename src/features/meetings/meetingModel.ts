@@ -66,6 +66,17 @@ export function insertBeforeEndMarker(
   return `${before}${segmentMarkdown.trimEnd()}\n\n${content.slice(markerPos)}`;
 }
 
+/// 保存済みデバイスIDが現在の一覧に存在すればそれを、なければ既定デバイスを返す。
+export function pickDeviceId(
+  savedId: string | null | undefined,
+  devices: { id: string }[],
+): string {
+  if (savedId && savedId !== "default" && devices.some((d) => d.id === savedId)) {
+    return savedId;
+  }
+  return "default";
+}
+
 export function defaultMeetingFileName(title: string, now: Date): string {
   const date = formatInTimeZone(now, "Asia/Tokyo", "yyyy-MM-dd");
   const safeTitle = title.trim().replace(/[/\\:*?"<>|]/g, "-") || "会議";

@@ -1,14 +1,63 @@
 import { useEffect, useState } from "react";
 import { PanePlaceholder } from "../../components/common/PanePlaceholder";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
+import { listAudioDevices, type AudioDevice } from "../../services/meetings";
+import { loadSetting, saveSetting } from "../../services/settings";
 import { useMeetingStore } from "../../stores/useMeetingStore";
 import { useWorkspaceStore } from "../../stores/useWorkspaceStore";
 import {
   defaultMeetingFileName,
   meetingStatusLabel,
+  pickDeviceId,
   type Meeting,
   type TranscriptSegment,
 } from "./meetingModel";
+
+const AUDIO_DEVICES_KEY = "audio.devices";
+
+type SavedDevices = {
+  micDeviceId?: string;
+  loopbackDeviceId?: string;
+};
+
+function parseSavedDevices(value: unknown): SavedDevices {
+  if (typeof value !== "object" || value === null) {
+    return {};
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    micDeviceId: typeof record.micDeviceId === "string" ? record.micDeviceId : undefined,
+    loopbackDeviceId:
+      typeof record.loopbackDeviceId === "string" ? record.loopbackDeviceId : undefined,
+  };
+}
+
+function DeviceSelect({
+  label,
+  devices,
+  value,
+  onChange,
+}: {
+  label: string;
+  devices: AudioDevice[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  return (
+    <label className="settings-field">
+      {label}
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="default">システム既定</option>
+        {devices.map((device) => (
+          <option key={device.id} value={device.id}>
+            {device.name}
+            {device.isDefault ? "（既定）" : ""}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 function formatTokyoTime(utc: string): string {
   const date = new Date(utc.endsWith("Z") ? utc : `${utc}Z`);
@@ -38,7 +87,36 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
   const [customPath, setCustomPath] = useState<string | null>(null);
   const [mic, setMic] = useState(true);
   const [loopback, setLoopback] = useState(true);
+  const [micDevices, setMicDevices] = useState<AudioDevice[]>([]);
+  const [loopbackDevices, setLoopbackDevices] = useState<AudioDevice[]>([]);
+  const [micDeviceId, setMicDeviceId] = useState("default");
+  const [loopbackDeviceId, setLoopbackDeviceId] = useState("default");
   const [localError, setLocalError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [devices, stored] = await Promise.all([
+          listAudioDevices(),
+          loadSetting(AUDIO_DEVICES_KEY).catch(() => null),
+        ]);
+        if (cancelled) {
+          return;
+        }
+        const saved = parseSavedDevices(stored);
+        setMicDevices(devices.mic);
+        setLoopbackDevices(devices.loopback);
+        setMicDeviceId(pickDeviceId(saved.micDeviceId, devices.mic));
+        setLoopbackDeviceId(pickDeviceId(saved.loopbackDeviceId, devices.loopback));
+      } catch (err) {
+        console.error("録音デバイス一覧の取得に失敗", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const fileName = defaultMeetingFileName(title, new Date());
   const targetFilePath =
@@ -54,12 +132,17 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
       return;
     }
     setLocalError(null);
+    void saveSetting(AUDIO_DEVICES_KEY, { micDeviceId, loopbackDeviceId }).catch((err) =>
+      console.error("録音デバイス設定の保存に失敗", err),
+    );
     const ok = await start({
       title: title.trim() || "会議",
       targetFilePath: targetFilePath.trim(),
       workspaceId: workspace?.id ?? null,
       mic,
       loopback,
+      micDeviceId: micDeviceId === "default" ? undefined : micDeviceId,
+      loopbackDeviceId: loopbackDeviceId === "default" ? undefined : loopbackDeviceId,
     });
     if (ok) {
       onClose();
@@ -91,6 +174,14 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
           <input type="checkbox" checked={mic} onChange={(e) => setMic(e.target.checked)} />
           マイクを録音する
         </label>
+        {mic && micDevices.length > 0 && (
+          <DeviceSelect
+            label="使用するマイク"
+            devices={micDevices}
+            value={micDeviceId}
+            onChange={setMicDeviceId}
+          />
+        )}
         <label className="settings-field settings-field--toggle">
           <input
             type="checkbox"
@@ -99,6 +190,14 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
           />
           PC音声（スピーカー出力）を録音する
         </label>
+        {loopback && loopbackDevices.length > 0 && (
+          <DeviceSelect
+            label="使用する出力デバイス"
+            devices={loopbackDevices}
+            value={loopbackDeviceId}
+            onChange={setLoopbackDeviceId}
+          />
+        )}
         <div className="meeting-dialog__privacy">
           <p>開始すると以下が実行されます:</p>
           <ul>
