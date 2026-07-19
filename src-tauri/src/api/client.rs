@@ -164,6 +164,65 @@ mod tests {
     }
 
     #[test]
+    fn チャット応答からcontentを取り出せる() {
+        let body = r#"{"choices":[{"message":{"role":"assistant","content":"{\"ok\":true}"}}]}"#;
+        assert_eq!(parse_chat_completion_content(body).unwrap(), r#"{"ok":true}"#);
+    }
+
+    #[test]
+    fn choicesが空のチャット応答はエラー() {
+        assert!(parse_chat_completion_content(r#"{"choices":[]}"#).is_err());
+        assert!(parse_chat_completion_content("not json").is_err());
+    }
+
+    #[test]
+    fn 議事録ai出力を検証して取り出せる() {
+        let content = r#"{
+            "title": "定例会議",
+            "summary": "新機能の導入方針を確認した。",
+            "decisions": [{"text": "8月から試験導入する", "sourceStartMs": 12000}],
+            "taskCandidates": [
+                {"title": "見積り作成", "priority": "high", "assignee": "田中", "sourceStartMs": 30000},
+                {"title": "資料共有", "priority": "low"}
+            ],
+            "openQuestions": [{"text": "予算上限は?"}]
+        }"#;
+        let output = parse_meeting_ai_output(content).unwrap();
+        assert_eq!(output.summary, "新機能の導入方針を確認した。");
+        assert_eq!(output.decisions.len(), 1);
+        assert_eq!(output.decisions[0].source_start_ms, Some(12000));
+        assert_eq!(output.task_candidates.len(), 2);
+        assert_eq!(output.task_candidates[0].priority, "high");
+        assert_eq!(output.task_candidates[0].assignee.as_deref(), Some("田中"));
+        assert_eq!(output.open_questions.len(), 1);
+    }
+
+    #[test]
+    fn コードフェンス付きの議事録aiも解釈する() {
+        let content = "```json\n{\"title\":\"会議\",\"summary\":\"要約\",\"decisions\":[],\"taskCandidates\":[],\"openQuestions\":[]}\n```";
+        let output = parse_meeting_ai_output(content).unwrap();
+        assert_eq!(output.summary, "要約");
+        assert!(output.decisions.is_empty());
+    }
+
+    #[test]
+    fn 不正なpriorityの議事録aiはエラー() {
+        let content = r#"{"title":"会議","summary":"要約","decisions":[],"taskCandidates":[{"title":"x","priority":"urgent"}],"openQuestions":[]}"#;
+        assert!(parse_meeting_ai_output(content).is_err());
+    }
+
+    #[test]
+    fn 要約が空の議事録aiはエラー() {
+        let content = r#"{"title":"会議","summary":"   ","decisions":[],"taskCandidates":[],"openQuestions":[]}"#;
+        assert!(parse_meeting_ai_output(content).is_err());
+    }
+
+    #[test]
+    fn jsonでない議事録aiはエラー() {
+        assert!(parse_meeting_ai_output("これはJSONではありません").is_err());
+    }
+
+    #[test]
     fn httpステータスをエラーコードへ正規化する() {
         assert_eq!(classify_status(401), ("API_AUTH_FAILED", false));
         assert_eq!(classify_status(403), ("API_AUTH_FAILED", false));
