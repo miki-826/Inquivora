@@ -72,6 +72,25 @@ public class WhisperProtocolTests
     }
 
     [Fact]
+    public void SanitizeText_RemovesReplacementCharacters()
+    {
+        Assert.Equal("音の話", WhisperProtocol.SanitizeText("��音の話"));
+        Assert.Equal("前半 後半", WhisperProtocol.SanitizeText("前半� 後半"));
+    }
+
+    [Fact]
+    public void SanitizeText_TrimsWhitespace()
+    {
+        Assert.Equal("こんにちは", WhisperProtocol.SanitizeText("  こんにちは � "));
+    }
+
+    [Fact]
+    public void SanitizeText_KeepsCleanTextUnchanged()
+    {
+        Assert.Equal("会議を始めます", WhisperProtocol.SanitizeText("会議を始めます"));
+    }
+
+    [Fact]
     public void Parse_ToleratesBom()
     {
         var command = WhisperProtocol.Parse(
