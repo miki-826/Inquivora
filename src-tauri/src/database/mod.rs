@@ -4,6 +4,7 @@ pub mod meeting_ai;
 pub mod meetings;
 pub mod providers;
 pub mod reminders;
+pub mod search;
 pub mod settings;
 pub mod tabs;
 pub mod tasks;
