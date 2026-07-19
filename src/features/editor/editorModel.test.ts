@@ -3,6 +3,7 @@ import {
   addOrActivateTab,
   closeTab,
   languageForExtension,
+  reorderTabs,
   viewTypeForFile,
   type EditorTab,
 } from "./editorModel";
@@ -22,6 +23,20 @@ function tab(id: string, path: string): EditorTab {
     viewType: "editor",
   };
 }
+
+describe("reorderTabs", () => {
+  const tabs = [tab("a", "a.md"), tab("b", "b.md"), tab("c", "c.md")];
+
+  it("ドラッグ元をドロップ先の位置へ移動する", () => {
+    expect(reorderTabs(tabs, "a", "c").map((t) => t.id)).toEqual(["b", "c", "a"]);
+    expect(reorderTabs(tabs, "c", "a").map((t) => t.id)).toEqual(["c", "a", "b"]);
+  });
+
+  it("同じタブや不明なIDは順序を変えない", () => {
+    expect(reorderTabs(tabs, "a", "a").map((t) => t.id)).toEqual(["a", "b", "c"]);
+    expect(reorderTabs(tabs, "x", "b").map((t) => t.id)).toEqual(["a", "b", "c"]);
+  });
+});
 
 describe("languageForExtension", () => {
   it("代表的な拡張子をMonaco言語IDへ対応付ける", () => {
