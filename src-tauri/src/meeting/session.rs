@@ -184,3 +184,46 @@ pub fn has_session(app: &AppHandle, meeting_id: &str) -> bool {
         .map(|sessions| sessions.contains_key(meeting_id))
         .unwrap_or(false)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn options(mic: bool, loopback: bool) -> StartOptions {
+        StartOptions {
+            mic,
+            loopback,
+            mic_device_id: None,
+            loopback_device_id: None,
+            chunk_seconds: 20,
+        }
+    }
+
+    #[test]
+    fn デバイス未指定なら既定デバイスで開始する() {
+        let command = build_start_command(&options(true, true), "C:/audio");
+        assert_eq!(command["micDeviceId"], "default");
+        assert_eq!(command["loopbackDeviceId"], "default");
+        assert_eq!(command["chunkSeconds"], 20);
+        assert_eq!(command["outputDir"], "C:/audio");
+    }
+
+    #[test]
+    fn 指定デバイスidがstartコマンドへ反映される() {
+        let mut opts = options(true, true);
+        opts.mic_device_id = Some("mic-guid-1".to_string());
+        opts.loopback_device_id = Some("render-guid-2".to_string());
+        let command = build_start_command(&opts, "C:/audio");
+        assert_eq!(command["micDeviceId"], "mic-guid-1");
+        assert_eq!(command["loopbackDeviceId"], "render-guid-2");
+    }
+
+    #[test]
+    fn 無効なソースはnullになりデバイス指定も無視される() {
+        let mut opts = options(false, true);
+        opts.mic_device_id = Some("mic-guid-1".to_string());
+        let command = build_start_command(&opts, "C:/audio");
+        assert!(command["micDeviceId"].is_null());
+        assert_eq!(command["loopbackDeviceId"], "default");
+    }
+}

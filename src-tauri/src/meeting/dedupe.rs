@@ -63,4 +63,20 @@ mod tests {
     fn 前セグメントが空なら新テキストを返す() {
         assert_eq!(dedupe_overlap("", "新しい発言"), "新しい発言");
     }
+
+    #[test]
+    fn 置換文字は除去される() {
+        assert_eq!(clean_transcript("\u{FFFD}\u{FFFD}音の話"), "音の話");
+        assert_eq!(clean_transcript("前半\u{FFFD} 後半"), "前半 後半");
+    }
+
+    #[test]
+    fn 置換文字除去後の前後空白はtrimされる() {
+        assert_eq!(clean_transcript("  こんにちは \u{FFFD} "), "こんにちは");
+    }
+
+    #[test]
+    fn 正常なテキストは変化しない() {
+        assert_eq!(clean_transcript("会議を始めます"), "会議を始めます");
+    }
 }
