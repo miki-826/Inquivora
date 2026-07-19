@@ -504,6 +504,18 @@ function WhisperSection() {
     }
   };
 
+  const remove = async (name: string, label: string) => {
+    if (!window.confirm(`${label} を削除しますか？必要になれば再ダウンロードできます。`)) {
+      return;
+    }
+    try {
+      await whisperApi.deleteWhisperModel(name);
+      await refresh();
+    } catch (err) {
+      setError(messageOf(err));
+    }
+  };
+
   const download = async (name: string) => {
     setDownloading(name);
     setProgress(null);
@@ -522,6 +534,10 @@ function WhisperSection() {
     progress && downloading === progress.name
       ? downloadPercent(progress.receivedBytes, progress.totalBytes)
       : null;
+
+  const downloadedSizeMb = models
+    .filter((m) => m.downloaded)
+    .reduce((sum, m) => sum + m.sizeMb, 0);
 
   return (
     <section className="settings-section">
@@ -555,7 +571,18 @@ function WhisperSection() {
             </label>
             <p className="whisper-model__hint">{hint.tagline}</p>
             {model.downloaded ? (
-              <span className="whisper-model__downloaded">ダウンロード済み</span>
+              <div className="whisper-model__actions">
+                <span className="whisper-model__downloaded">ダウンロード済み</span>
+                <button
+                  type="button"
+                  className="provider-card__danger"
+                  disabled={model.selected}
+                  title={model.selected ? "使用中のモデルは削除できません" : undefined}
+                  onClick={() => void remove(model.name, model.displayName)}
+                >
+                  削除
+                </button>
+              </div>
             ) : (
               <button
                 type="button"
@@ -573,6 +600,11 @@ function WhisperSection() {
           );
         })}
       </div>
+      {downloadedSizeMb > 0 && (
+        <p className="settings-note">
+          ダウンロード済み合計: {formatModelSize(downloadedSizeMb)}
+        </p>
+      )}
     </section>
   );
 }

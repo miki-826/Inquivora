@@ -2094,6 +2094,12 @@ button {
   color: var(--color-text-muted);
 }
 
+.whisper-model__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .whisper-model__downloaded {
   font-size: 12px;
   color: var(--color-success);
