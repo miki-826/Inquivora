@@ -47,6 +47,7 @@ pub fn run() {
             });
             notifications::scheduler::spawn(app.handle().clone());
             app.manage(meeting::session::AudioSessions::default());
+            app.manage(notifications::TestNotificationGuard::default());
             meeting::worker::spawn(app.handle().clone());
             Ok(())
         })

@@ -4,6 +4,7 @@ use crate::database::reminders::{self, Reminder, ReminderInput, ReminderPatch};
 use crate::database::settings;
 use crate::error::AppError;
 use crate::notifications::{schedule, scheduler, sender};
+use crate::notifications::TestNotificationGuard;
 use crate::DbState;
 
 fn with_conn<T>(
@@ -66,7 +67,11 @@ pub fn notification_reconcile(app: AppHandle) -> Result<usize, AppError> {
 pub async fn notification_test(
     app: AppHandle,
     state: State<'_, DbState>,
+    guard: State<'_, TestNotificationGuard>,
 ) -> Result<(), AppError> {
+    let Some(_lease) = guard.try_acquire() else {
+        return Ok(());
+    };
     let silent = {
         let conn = state
             .0

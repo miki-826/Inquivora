@@ -7,3 +7,4 @@ pub use schedule::{
     event_notification, is_resume_gap, parse_settings, task_notification, NotificationPayload,
     NotificationSettings,
 };
+pub use sender::TestNotificationGuard;

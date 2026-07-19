@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use serde_json::json;
@@ -10,6 +11,28 @@ use crate::notifications::schedule::NotificationPayload;
 
 fn failed(message: String) -> AppError {
     AppError::new("NOTIFICATION_FAILED", message, true)
+}
+
+/// テスト通知の同時実行を1件に制限する（連打によるSidecarプロセスの多重起動を防ぐ）。
+#[derive(Default)]
+pub struct TestNotificationGuard(AtomicBool);
+
+impl TestNotificationGuard {
+    /// 送信中でなければRAIIリースを返す。送信中はNoneを返す。
+    pub fn try_acquire(&self) -> Option<TestNotificationLease<'_>> {
+        self.0
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+            .then_some(TestNotificationLease(&self.0))
+    }
+}
+
+pub struct TestNotificationLease<'a>(&'a AtomicBool);
+
+impl Drop for TestNotificationLease<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
 }
 
 /// Sidecarのnotifyモードへ§14.4のNDJSONコマンドを送り、表示ACKを待つ。
@@ -72,4 +95,26 @@ pub async fn send_notification(
     };
     drop(child);
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn 送信中は二重取得できない() {
+        let guard = TestNotificationGuard::default();
+        let lease = guard.try_acquire();
+        assert!(lease.is_some());
+        assert!(guard.try_acquire().is_none());
+    }
+
+    #[test]
+    fn リース解放後は再取得できる() {
+        let guard = TestNotificationGuard::default();
+        {
+            let _lease = guard.try_acquire().expect("初回は取得できる");
+        }
+        assert!(guard.try_acquire().is_some());
+    }
 }
