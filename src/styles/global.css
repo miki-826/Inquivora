@@ -389,6 +389,140 @@ button {
   color: #fff;
 }
 
+.ai-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.ai-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ai-panel__title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.ai-panel__generate {
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 13px;
+}
+
+.ai-panel__generate:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ai-panel__note {
+  font-size: 12px;
+  color: var(--color-text-subtle, #888);
+  background: var(--color-surface-subtle);
+  border-radius: 6px;
+  padding: 8px 10px;
+  line-height: 1.5;
+}
+
+.ai-panel__section h3 {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--color-text);
+}
+
+.ai-panel__summary {
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.ai-panel__empty {
+  font-size: 12px;
+  color: var(--color-text-subtle, #999);
+}
+
+.ai-panel__list {
+  list-style: disc;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.ai-panel__candidates {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-panel__candidate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--color-border, #ddd);
+  border-radius: 6px;
+}
+
+.ai-panel__candidate-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ai-panel__candidate-title {
+  font-size: 13px;
+}
+
+.ai-panel__priority {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: #fff;
+  background: #888;
+}
+
+.ai-panel__priority--high {
+  background: #d9534f;
+}
+
+.ai-panel__priority--medium {
+  background: #f0ad4e;
+}
+
+.ai-panel__priority--low {
+  background: #5bc0de;
+}
+
+.ai-panel__assignee {
+  font-size: 11px;
+  color: var(--color-text-subtle, #888);
+}
+
+.ai-panel__accept {
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: 12px;
+}
+
+.ai-panel__accepted {
+  font-size: 12px;
+  color: var(--color-success, #2e7d32);
+}
+
 .file-tree__chevron {
   display: inline-flex;
   width: 14px;

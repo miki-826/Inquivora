@@ -399,6 +399,110 @@ function SelectedMeetingView() {
   );
 }
 
+function AiMeetingPanel() {
+  const selectedMeetingId = useMeetingStore((s) => s.selectedMeetingId);
+  const ai = useMeetingStore((s) => s.ai);
+  const summaryAvailable = useMeetingStore((s) => s.summaryAvailable);
+  const generating = useMeetingStore((s) => s.generatingSummary);
+  const generateSummary = useMeetingStore((s) => s.generateSummary);
+  const acceptCandidate = useMeetingStore((s) => s.acceptCandidate);
+
+  if (!selectedMeetingId) {
+    return (
+      <PanePlaceholder
+        title="要約・決定事項・タスク候補"
+        description="会議を選択すると議事録を表示します"
+      />
+    );
+  }
+
+  return (
+    <div className="ai-panel">
+      <div className="ai-panel__header">
+        <h2 className="ai-panel__title">AI議事録</h2>
+        <button
+          type="button"
+          className="ai-panel__generate"
+          disabled={!summaryAvailable || generating}
+          onClick={() => void generateSummary(selectedMeetingId)}
+        >
+          {generating ? "生成中…" : ai.summary ? "再生成" : "議事録を生成"}
+        </button>
+      </div>
+      {!summaryAvailable && (
+        <p className="ai-panel__note">
+          議事録の生成にはAPIプロバイダーの設定が必要です。設定画面のAI設定で「議事録・タスク抽出」にProviderとモデルを割り当ててください（内蔵Whisperのみでは生成できません）。
+        </p>
+      )}
+
+      <section className="ai-panel__section">
+        <h3>要約</h3>
+        {ai.summary ? (
+          <p className="ai-panel__summary">{ai.summary}</p>
+        ) : (
+          <p className="ai-panel__empty">まだ生成されていません</p>
+        )}
+      </section>
+
+      <section className="ai-panel__section">
+        <h3>決定事項</h3>
+        {ai.decisions.length === 0 ? (
+          <p className="ai-panel__empty">なし</p>
+        ) : (
+          <ul className="ai-panel__list">
+            {ai.decisions.map((d) => (
+              <li key={d.id}>{d.text}</li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="ai-panel__section">
+        <h3>タスク候補</h3>
+        {ai.candidates.length === 0 ? (
+          <p className="ai-panel__empty">なし</p>
+        ) : (
+          <ul className="ai-panel__candidates">
+            {ai.candidates.map((c) => (
+              <li key={c.id} className="ai-panel__candidate">
+                <div className="ai-panel__candidate-main">
+                  <span className={`ai-panel__priority ai-panel__priority--${c.priority}`}>
+                    {c.priority === "high" ? "高" : c.priority === "low" ? "低" : "中"}
+                  </span>
+                  <span className="ai-panel__candidate-title">{c.title}</span>
+                </div>
+                {c.assignee && <span className="ai-panel__assignee">担当: {c.assignee}</span>}
+                {c.status === "accepted" ? (
+                  <span className="ai-panel__accepted">登録済み</span>
+                ) : (
+                  <button
+                    type="button"
+                    className="ai-panel__accept"
+                    onClick={() => void acceptCandidate(c.id)}
+                  >
+                    タスク登録
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {ai.openQuestions.length > 0 && (
+        <section className="ai-panel__section">
+          <h3>未確認事項</h3>
+          <ul className="ai-panel__list">
+            {ai.openQuestions.map((q, i) => (
+              <li key={i}>{q.text}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+}
+
 export function MeetingsPage() {
   const activeMeeting = useMeetingStore((s) => s.activeMeeting);
   const error = useMeetingStore((s) => s.error);
@@ -413,7 +517,7 @@ export function MeetingsPage() {
   return (
     <ThreePaneLayout
       left={<MeetingList />}
-      right={<PanePlaceholder title="要約・決定事項・タスク候補" description="Phase 6で実装予定" />}
+      right={<AiMeetingPanel />}
     >
       <div className="meeting-page">
         {error && (

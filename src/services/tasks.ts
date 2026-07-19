@@ -53,3 +53,18 @@ export function completeTask(id: string): Promise<Task> {
 export function reopenTask(id: string): Promise<Task> {
   return invoke("task_reopen", { id });
 }
+
+export type CandidateAcceptPatch = {
+  title?: string;
+  description?: string | null;
+  dueAtUtc?: string | null;
+  priority?: TaskPriority;
+  assignee?: string | null;
+};
+
+export function acceptTaskCandidate(
+  candidateId: string,
+  patch?: CandidateAcceptPatch,
+): Promise<Task> {
+  return invoke("task_accept_candidate", { candidateId, patch: patch ?? null });
+}

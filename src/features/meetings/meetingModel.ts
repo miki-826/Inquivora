@@ -34,6 +34,47 @@ export const segmentSchema = z.object({
 
 export type TranscriptSegment = z.infer<typeof segmentSchema>;
 
+export const meetingDecisionSchema = z.object({
+  id: z.string(),
+  meetingId: z.string(),
+  text: z.string(),
+  sourceStartMs: z.number().nullish(),
+  createdAt: z.string(),
+});
+
+export type MeetingDecision = z.infer<typeof meetingDecisionSchema>;
+
+export const taskCandidateSchema = z.object({
+  id: z.string(),
+  meetingId: z.string(),
+  title: z.string(),
+  description: z.string().nullish(),
+  dueAtUtc: z.string().nullish(),
+  priority: z.enum(["high", "medium", "low"]),
+  assignee: z.string().nullish(),
+  sourceStartMs: z.number().nullish(),
+  status: z.string(),
+  createdAt: z.string(),
+});
+
+export type TaskCandidate = z.infer<typeof taskCandidateSchema>;
+
+export const openQuestionSchema = z.object({
+  text: z.string(),
+  sourceStartMs: z.number().nullish(),
+});
+
+export type OpenQuestion = z.infer<typeof openQuestionSchema>;
+
+export const meetingSummaryResultSchema = z.object({
+  summary: z.string(),
+  decisions: z.array(meetingDecisionSchema),
+  taskCandidates: z.array(taskCandidateSchema),
+  openQuestions: z.array(openQuestionSchema),
+});
+
+export type MeetingSummaryResult = z.infer<typeof meetingSummaryResultSchema>;
+
 export function parseMeeting(value: unknown): Meeting | null {
   const parsed = meetingSchema.safeParse(value);
   return parsed.success ? parsed.data : null;

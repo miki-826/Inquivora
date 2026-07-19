@@ -1,9 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
+  meetingDecisionSchema,
   meetingSchema,
+  meetingSummaryResultSchema,
   parseMeeting,
   segmentSchema,
+  taskCandidateSchema,
   type Meeting,
+  type MeetingDecision,
+  type MeetingSummaryResult,
+  type TaskCandidate,
   type TranscriptSegment,
 } from "../features/meetings/meetingModel";
 
@@ -82,4 +88,34 @@ export async function listAudioDevices(): Promise<{ mic: AudioDevice[]; loopback
     "meeting_list_devices",
   );
   return { mic: value.mic ?? [], loopback: value.loopback ?? [] };
+}
+
+export async function isSummaryAvailable(): Promise<boolean> {
+  return (await invoke("meeting_summary_available")) === true;
+}
+
+export async function generateSummary(meetingId: string): Promise<MeetingSummaryResult> {
+  return meetingSummaryResultSchema.parse(await invoke("meeting_generate_summary", { meetingId }));
+}
+
+export async function listDecisions(meetingId: string): Promise<MeetingDecision[]> {
+  const value = await invoke("meeting_list_decisions", { meetingId });
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((entry) => {
+    const parsed = meetingDecisionSchema.safeParse(entry);
+    return parsed.success ? [parsed.data] : [];
+  });
+}
+
+export async function listCandidates(meetingId: string): Promise<TaskCandidate[]> {
+  const value = await invoke("meeting_list_candidates", { meetingId });
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((entry) => {
+    const parsed = taskCandidateSchema.safeParse(entry);
+    return parsed.success ? [parsed.data] : [];
+  });
 }

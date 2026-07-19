@@ -4,10 +4,14 @@ import {
   insertBeforeEndMarker,
   segmentSchema,
   type Meeting,
+  type MeetingDecision,
+  type OpenQuestion,
+  type TaskCandidate,
   type TranscriptSegment,
 } from "../features/meetings/meetingModel";
 import * as meetings from "../services/meetings";
 import type { MeetingStartInput } from "../services/meetings";
+import { acceptTaskCandidate } from "../services/tasks";
 import { useEditorStore } from "./useEditorStore";
 
 type AudioLevels = {
@@ -15,12 +19,24 @@ type AudioLevels = {
   loopback: number;
 };
 
+type MeetingAi = {
+  summary: string | null;
+  decisions: MeetingDecision[];
+  candidates: TaskCandidate[];
+  openQuestions: OpenQuestion[];
+};
+
+const EMPTY_AI: MeetingAi = { summary: null, decisions: [], candidates: [], openQuestions: [] };
+
 type MeetingStore = {
   meetings: Meeting[];
   activeMeeting: Meeting | null;
   selectedMeetingId: string | null;
   segments: TranscriptSegment[];
   levels: AudioLevels;
+  ai: MeetingAi;
+  summaryAvailable: boolean;
+  generatingSummary: boolean;
   error: string | null;
   busy: boolean;
   loadMeetings: () => Promise<void>;
@@ -30,6 +46,8 @@ type MeetingStore = {
   resume: () => Promise<void>;
   stop: () => Promise<void>;
   remove: (meetingId: string) => Promise<void>;
+  generateSummary: (meetingId: string) => Promise<void>;
+  acceptCandidate: (candidateId: string) => Promise<void>;
   clearError: () => void;
 };
 
@@ -50,6 +68,9 @@ export const useMeetingStore = create<MeetingStore>((set, get) => ({
   selectedMeetingId: null,
   segments: [],
   levels: { mic: 0, loopback: 0 },
+  ai: EMPTY_AI,
+  summaryAvailable: false,
+  generatingSummary: false,
   error: null,
   busy: false,
 
@@ -64,14 +85,29 @@ export const useMeetingStore = create<MeetingStore>((set, get) => ({
   },
 
   selectMeeting: async (meetingId) => {
-    set({ selectedMeetingId: meetingId, segments: [] });
+    set({ selectedMeetingId: meetingId, segments: [], ai: EMPTY_AI });
     if (!meetingId) {
       return;
     }
     try {
-      const segments = await meetings.listSegments(meetingId);
+      const [segments, meeting, decisions, candidates, available] = await Promise.all([
+        meetings.listSegments(meetingId),
+        meetings.getMeeting(meetingId),
+        meetings.listDecisions(meetingId),
+        meetings.listCandidates(meetingId),
+        meetings.isSummaryAvailable().catch(() => false),
+      ]);
       if (get().selectedMeetingId === meetingId) {
-        set({ segments });
+        set({
+          segments,
+          summaryAvailable: available,
+          ai: {
+            summary: meeting?.summary ?? null,
+            decisions,
+            candidates,
+            openQuestions: [],
+          },
+        });
       }
     } catch (error) {
       set({ error: messageOf(error) });
@@ -150,6 +186,43 @@ export const useMeetingStore = create<MeetingStore>((set, get) => ({
         set({ selectedMeetingId: null, segments: [] });
       }
       await get().loadMeetings();
+    } catch (error) {
+      set({ error: messageOf(error) });
+    }
+  },
+
+  generateSummary: async (meetingId) => {
+    set({ generatingSummary: true, error: null });
+    try {
+      const result = await meetings.generateSummary(meetingId);
+      if (get().selectedMeetingId === meetingId) {
+        set({
+          ai: {
+            summary: result.summary,
+            decisions: result.decisions,
+            candidates: result.taskCandidates,
+            openQuestions: result.openQuestions,
+          },
+        });
+      }
+    } catch (error) {
+      set({ error: messageOf(error) });
+    } finally {
+      set({ generatingSummary: false });
+    }
+  },
+
+  acceptCandidate: async (candidateId) => {
+    try {
+      await acceptTaskCandidate(candidateId);
+      set((state) => ({
+        ai: {
+          ...state.ai,
+          candidates: state.ai.candidates.map((c) =>
+            c.id === candidateId ? { ...c, status: "accepted" } : c,
+          ),
+        },
+      }));
     } catch (error) {
       set({ error: messageOf(error) });
     }

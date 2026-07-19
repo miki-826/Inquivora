@@ -3,6 +3,7 @@ import {
   defaultMeetingFileName,
   insertBeforeEndMarker,
   meetingStatusLabel,
+  meetingSummaryResultSchema,
   parseMeeting,
   pickDeviceId,
 } from "./meetingModel";
@@ -99,5 +100,44 @@ describe("pickDeviceId", () => {
 
   it("defaultはそのまま維持する", () => {
     expect(pickDeviceId("default", devices)).toBe("default");
+  });
+});
+
+describe("meetingSummaryResultSchema", () => {
+  it("議事録生成結果を解析できる", () => {
+    const result = meetingSummaryResultSchema.parse({
+      summary: "新機能の導入方針を確認した。",
+      decisions: [
+        { id: "d1", meetingId: "m1", text: "8月から試験導入", sourceStartMs: 12000, createdAt: "2026-07-19T00:00:00Z" },
+      ],
+      taskCandidates: [
+        {
+          id: "c1",
+          meetingId: "m1",
+          title: "見積り作成",
+          priority: "high",
+          status: "pending",
+          createdAt: "2026-07-19T00:00:00Z",
+        },
+      ],
+      openQuestions: [{ text: "予算上限は?" }],
+    });
+    expect(result.summary).toContain("導入方針");
+    expect(result.decisions[0].sourceStartMs).toBe(12000);
+    expect(result.taskCandidates[0].priority).toBe("high");
+    expect(result.openQuestions[0].text).toBe("予算上限は?");
+  });
+
+  it("不正なpriorityは拒否する", () => {
+    expect(() =>
+      meetingSummaryResultSchema.parse({
+        summary: "x",
+        decisions: [],
+        taskCandidates: [
+          { id: "c1", meetingId: "m1", title: "x", priority: "urgent", status: "pending", createdAt: "t" },
+        ],
+        openQuestions: [],
+      }),
+    ).toThrow();
   });
 });
