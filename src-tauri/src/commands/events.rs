@@ -5,6 +5,7 @@ use crate::database::settings;
 use crate::error::AppError;
 use crate::notifications::schedule::parse_settings;
 use crate::notifications::sync::sync_after_event_saved;
+use crate::search as indexer;
 use crate::DbState;
 
 fn with_conn<T>(
@@ -32,6 +33,7 @@ pub fn event_create(state: State<'_, DbState>, input: EventInput) -> Result<Even
     with_conn(&state, |conn| {
         let event = events::create_event(conn, &input)?;
         sync_reminders(conn, None, &event)?;
+        let _ = indexer::index_event(conn, &event);
         Ok(event)
     })
 }
@@ -46,6 +48,7 @@ pub fn event_update(
         let old = events::get_event(conn, &id)?;
         let event = events::update_event(conn, &id, &patch)?;
         sync_reminders(conn, Some(&old), &event)?;
+        let _ = indexer::index_event(conn, &event);
         Ok(event)
     })
 }
@@ -57,7 +60,11 @@ pub fn event_get(state: State<'_, DbState>, id: String) -> Result<EventRecord, A
 
 #[tauri::command]
 pub fn event_delete(state: State<'_, DbState>, id: String) -> Result<(), AppError> {
-    with_conn(&state, |conn| events::delete_event(conn, &id))
+    with_conn(&state, |conn| {
+        events::delete_event(conn, &id)?;
+        let _ = indexer::remove_entity(conn, indexer::TYPE_EVENT, &id);
+        Ok(())
+    })
 }
 
 #[tauri::command]

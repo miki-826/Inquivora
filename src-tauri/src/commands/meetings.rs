@@ -14,6 +14,7 @@ use crate::database::meetings::{self, Meeting, MeetingStatus, TranscriptSegment}
 use crate::error::AppError;
 use crate::meeting::summary::{self, MEETING_SUMMARY_FEATURE};
 use crate::meeting::{files, markdown, session};
+use crate::search as indexer;
 use crate::whisper;
 use crate::DbState;
 
@@ -143,6 +144,7 @@ pub fn meeting_delete(app: AppHandle, meeting_id: String) -> Result<(), AppError
     let state = app.state::<DbState>();
     let conn = state.0.lock().map_err(lock_error)?;
     jobs::cancel_jobs_for_entity(&conn, &meeting_id)?;
+    let _ = indexer::remove_entity(&conn, indexer::TYPE_MEETING, &meeting_id);
     meetings::delete_meeting(&conn, &meeting_id)
 }
 
@@ -345,6 +347,10 @@ pub async fn meeting_generate_summary(
         meeting_ai::replace_decisions(&conn, &meeting_id, &decision_inputs)?;
         meeting_ai::replace_candidates(&conn, &meeting_id, &candidate_inputs)?;
         record_summary_usage(&conn, &profile.id, &model, &meeting_id, "success", None);
+        if let Ok(updated) = meetings::get_meeting(&conn, &meeting_id) {
+            let segments = meetings::list_segments(&conn, &meeting_id).unwrap_or_default();
+            let _ = indexer::index_meeting(&conn, &updated, &segments);
+        }
         let decisions = meeting_ai::list_decisions(&conn, &meeting_id)?;
         let task_candidates = meeting_ai::list_candidates(&conn, &meeting_id)?;
         (decisions, task_candidates)

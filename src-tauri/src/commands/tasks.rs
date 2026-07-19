@@ -6,6 +6,7 @@ use crate::database::{meeting_ai, meetings, settings};
 use crate::error::AppError;
 use crate::notifications::schedule::parse_settings;
 use crate::notifications::sync::sync_after_task_saved;
+use crate::search as indexer;
 use crate::DbState;
 
 fn priority_from_str(value: &str) -> TaskPriority {
@@ -41,6 +42,7 @@ pub fn task_create(state: State<'_, DbState>, input: TaskInput) -> Result<Task, 
     with_conn(&state, |conn| {
         let task = tasks::create_task(conn, &input)?;
         sync_reminders(conn, None, &task)?;
+        let _ = indexer::index_task(conn, &task);
         Ok(task)
     })
 }
@@ -51,13 +53,18 @@ pub fn task_update(state: State<'_, DbState>, id: String, patch: TaskPatch) -> R
         let old = tasks::get_task(conn, &id)?;
         let task = tasks::update_task(conn, &id, &patch)?;
         sync_reminders(conn, Some(&old), &task)?;
+        let _ = indexer::index_task(conn, &task);
         Ok(task)
     })
 }
 
 #[tauri::command]
 pub fn task_delete(state: State<'_, DbState>, id: String) -> Result<(), AppError> {
-    with_conn(&state, |conn| tasks::delete_task(conn, &id))
+    with_conn(&state, |conn| {
+        tasks::delete_task(conn, &id)?;
+        let _ = indexer::remove_entity(conn, indexer::TYPE_TASK, &id);
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -81,6 +88,7 @@ pub fn task_complete(state: State<'_, DbState>, id: String) -> Result<Task, AppE
         let old = tasks::get_task(conn, &id)?;
         let task = tasks::complete_task(conn, &id)?;
         sync_reminders(conn, Some(&old), &task)?;
+        let _ = indexer::index_task(conn, &task);
         Ok(task)
     })
 }
@@ -91,6 +99,7 @@ pub fn task_reopen(state: State<'_, DbState>, id: String) -> Result<Task, AppErr
         let old = tasks::get_task(conn, &id)?;
         let task = tasks::reopen_task(conn, &id)?;
         sync_reminders(conn, Some(&old), &task)?;
+        let _ = indexer::index_task(conn, &task);
         Ok(task)
     })
 }
@@ -140,6 +149,7 @@ pub fn task_accept_candidate(
         let task = tasks::create_task(conn, &input)?;
         sync_reminders(conn, None, &task)?;
         meeting_ai::set_candidate_status(conn, &candidate_id, "accepted")?;
+        let _ = indexer::index_task(conn, &task);
         Ok(task)
     })
 }

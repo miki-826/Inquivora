@@ -11,6 +11,7 @@ use crate::workspace::filetype::{self, FileCategory};
 use crate::workspace::ops::{self, FileContent, FileMeta};
 use crate::workspace::paths::ensure_within_workspace;
 use crate::workspace::tree::{self, TreeEntry, DEFAULT_IGNORE_PATTERNS};
+use crate::search as indexer;
 use crate::DbState;
 
 pub const IGNORE_PATTERNS_KEY: &str = "workspace.ignorePatterns";
@@ -55,13 +56,23 @@ pub fn file_read(ws: State<'_, WorkspaceState>, path: String) -> Result<FileCont
 
 #[tauri::command]
 pub fn file_write_atomic(
+    db: State<'_, DbState>,
     ws: State<'_, WorkspaceState>,
     path: String,
     content: String,
     encoding: FileEncoding,
     line_ending: LineEnding,
 ) -> Result<FileMeta, AppError> {
-    ops::write_text_atomic(checked_path(&ws, &path)?, &content, encoding, line_ending)
+    let target = checked_path(&ws, &path)?;
+    let meta = ops::write_text_atomic(target, &content, encoding, line_ending)?;
+    if let Ok(conn) = db.0.lock() {
+        let name = target
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let _ = indexer::index_file(&conn, &target.to_string_lossy(), &name, &content);
+    }
+    Ok(meta)
 }
 
 #[tauri::command]
@@ -75,22 +86,40 @@ pub fn file_create(
 
 #[tauri::command]
 pub fn file_rename(
+    db: State<'_, DbState>,
     ws: State<'_, WorkspaceState>,
     old_path: String,
     new_path: String,
 ) -> Result<(), AppError> {
     let old = checked_path(&ws, &old_path)?;
     let new = checked_path(&ws, &new_path)?;
-    ops::rename_entry(old, new)
+    ops::rename_entry(old, new)?;
+    if let Ok(conn) = db.0.lock() {
+        let _ = indexer::remove_entity(&conn, indexer::TYPE_FILE, &old.to_string_lossy());
+        if let Ok(file) = ops::read_text_file(new) {
+            let name = new
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let _ = indexer::index_file(&conn, &new.to_string_lossy(), &name, &file.content);
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
 pub fn file_delete(
+    db: State<'_, DbState>,
     ws: State<'_, WorkspaceState>,
     path: String,
     use_recycle_bin: bool,
 ) -> Result<(), AppError> {
-    ops::delete_entry(checked_path(&ws, &path)?, use_recycle_bin)
+    let target = checked_path(&ws, &path)?;
+    ops::delete_entry(target, use_recycle_bin)?;
+    if let Ok(conn) = db.0.lock() {
+        let _ = indexer::remove_entity(&conn, indexer::TYPE_FILE, &target.to_string_lossy());
+    }
+    Ok(())
 }
 
 #[tauri::command]

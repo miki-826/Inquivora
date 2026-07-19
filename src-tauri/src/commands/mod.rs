@@ -3,6 +3,7 @@ pub mod files;
 pub mod meetings;
 pub mod providers;
 pub mod reminders;
+pub mod search;
 pub mod settings;
 pub mod tasks;
 pub mod whisper;
