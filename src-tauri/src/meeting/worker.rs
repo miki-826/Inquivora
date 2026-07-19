@@ -202,10 +202,10 @@ fn finish_with_success(
     let state = app.state::<DbState>();
     let conn = state.0.lock().map_err(lock_error)?;
     record_usage(&conn, context, "success", None)?;
-    let trimmed = text.trim();
-    if !trimmed.is_empty() {
+    let cleaned = dedupe::clean_transcript(&text);
+    if !cleaned.is_empty() {
         let previous = meetings::last_segment_text(&conn, &context.meeting.id, &context.chunk.source)?;
-        let deduped = dedupe::dedupe_overlap(previous.as_deref().unwrap_or(""), trimmed);
+        let deduped = dedupe::dedupe_overlap(previous.as_deref().unwrap_or(""), &cleaned);
         if !deduped.is_empty() {
             let speaker = markdown::speaker_label_for_source(&context.chunk.source);
             let segment = meetings::insert_segment(

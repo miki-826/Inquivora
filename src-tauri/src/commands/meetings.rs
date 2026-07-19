@@ -33,6 +33,10 @@ pub struct MeetingStartInput {
     #[serde(default = "default_true")]
     pub loopback: bool,
     #[serde(default)]
+    pub mic_device_id: Option<String>,
+    #[serde(default)]
+    pub loopback_device_id: Option<String>,
+    #[serde(default)]
     pub chunk_seconds: Option<i64>,
 }
 
@@ -79,6 +83,8 @@ pub async fn meeting_start(app: AppHandle, input: MeetingStartInput) -> Result<M
         session::StartOptions {
             mic: input.mic,
             loopback: input.loopback,
+            mic_device_id: input.mic_device_id.clone(),
+            loopback_device_id: input.loopback_device_id.clone(),
             chunk_seconds: input.chunk_seconds.unwrap_or(20).clamp(5, 60),
         },
     )

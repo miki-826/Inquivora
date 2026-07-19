@@ -16,7 +16,23 @@ pub struct AudioSessions(pub Mutex<HashMap<String, CommandChild>>);
 pub struct StartOptions {
     pub mic: bool,
     pub loopback: bool,
+    pub mic_device_id: Option<String>,
+    pub loopback_device_id: Option<String>,
     pub chunk_seconds: i64,
+}
+
+fn device_id(enabled: bool, id: &Option<String>) -> Option<String> {
+    enabled.then(|| id.clone().unwrap_or_else(|| "default".to_string()))
+}
+
+fn build_start_command(options: &StartOptions, output_dir: &str) -> serde_json::Value {
+    json!({
+        "command": "start",
+        "micDeviceId": device_id(options.mic, &options.mic_device_id),
+        "loopbackDeviceId": device_id(options.loopback, &options.loopback_device_id),
+        "chunkSeconds": options.chunk_seconds,
+        "outputDir": output_dir,
+    })
 }
 
 fn audio_error(message: String) -> AppError {
@@ -47,13 +63,7 @@ pub async fn start_session(
         .spawn()
         .map_err(|e| audio_error(format!("音声Sidecarを起動できません: {e}")))?;
 
-    let start_command = json!({
-        "command": "start",
-        "micDeviceId": options.mic.then_some("default"),
-        "loopbackDeviceId": options.loopback.then_some("default"),
-        "chunkSeconds": options.chunk_seconds,
-        "outputDir": output_dir.to_string_lossy(),
-    });
+    let start_command = build_start_command(&options, &output_dir.to_string_lossy());
     child
         .write(format!("{start_command}\n").as_bytes())
         .map_err(|e| audio_error(format!("音声Sidecarへ書き込めません: {e}")))?;

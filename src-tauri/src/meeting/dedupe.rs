@@ -23,6 +23,11 @@ pub fn dedupe_overlap(prev: &str, next: &str) -> String {
     next_trimmed.to_string()
 }
 
+/// Whisperのトークン分断で混入するU+FFFD置換文字を除去する。
+pub fn clean_transcript(text: &str) -> String {
+    text.replace('\u{FFFD}', "").trim().to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
