@@ -39,6 +39,7 @@ pub fn open_database(path: &Path) -> Result<Connection, AppError> {
     conn.pragma_update(None, "journal_mode", "WAL")?;
     conn.pragma_update(None, "synchronous", "NORMAL")?;
     conn.pragma_update(None, "foreign_keys", "ON")?;
+    conn.pragma_update(None, "busy_timeout", 5000)?;
     run_migrations(&mut conn)?;
     Ok(conn)
 }

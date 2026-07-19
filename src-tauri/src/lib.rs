@@ -138,6 +138,7 @@ pub fn run() {
             commands::whisper::whisper_model_delete,
             commands::search::search_global,
             commands::search::search_reindex_workspace,
+            commands::search::search_index_paths,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

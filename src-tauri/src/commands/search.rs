@@ -1,4 +1,4 @@
-use tauri::State;
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::commands::workspace::{active_root, WorkspaceState};
 use crate::database::search::{self, SearchResult};
@@ -29,13 +29,33 @@ pub fn search_global(
     )
 }
 
-/// §17.7 索引の全再構築。アクティブワークスペース配下のファイルも走査する。
+/// §15.3/§17.7 索引の全再構築。UIをブロックしないよう別スレッドで実行し、
+/// ファイル走査はDBロック外で行い、書込のみ1トランザクションで短時間ロックする。
 #[tauri::command]
-pub fn search_reindex_workspace(
-    db: State<'_, DbState>,
-    ws: State<'_, WorkspaceState>,
-) -> Result<usize, AppError> {
+pub fn search_reindex_workspace(app: AppHandle, ws: State<'_, WorkspaceState>) -> Result<(), AppError> {
     let root = active_root(&ws).ok();
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        let _ = handle.emit("search:index-started", ());
+        let file_docs = root
+            .as_deref()
+            .map(indexer::collect_workspace_docs)
+            .unwrap_or_default();
+        let count = match handle.state::<DbState>().0.lock() {
+            Ok(mut conn) => indexer::reindex(&mut conn, file_docs).unwrap_or(0),
+            Err(_) => 0,
+        };
+        let _ = handle.emit("search:index-done", count);
+    });
+    Ok(())
+}
+
+/// 変更されたパスだけを索引へ反映する（ウォッチャの外部変更追従用）。
+#[tauri::command]
+pub fn search_index_paths(db: State<'_, DbState>, paths: Vec<String>) -> Result<(), AppError> {
     let conn = db.0.lock().map_err(lock_error)?;
-    indexer::reindex(&conn, root.as_deref())
+    for path in &paths {
+        let _ = indexer::sync_path(&conn, path);
+    }
+    Ok(())
 }

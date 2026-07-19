@@ -114,30 +114,51 @@ pub fn remove_entity(conn: &Connection, entity_type: &str, entity_id: &str) -> R
     search::delete_document(conn, entity_type, entity_id)
 }
 
-/// 索引を全再構築する（§15.3 大規模変更）。ファイルはworkspace_root配下を走査する。
-pub fn reindex(conn: &Connection, workspace_root: Option<&Path>) -> Result<usize, AppError> {
-    for entity_type in [TYPE_FILE, TYPE_MEETING, TYPE_TASK, TYPE_EVENT] {
-        search::delete_by_type(conn, entity_type)?;
+/// 単一パスの索引を最新化する。テキストファイルなら登録、消えていれば索引から除去する。
+/// ウォッチャからの外部変更追従に使う（軽量・高速）。
+pub fn sync_path(conn: &Connection, abs_path: &str) -> Result<(), AppError> {
+    let path = Path::new(abs_path);
+    if path.is_file() {
+        if should_index_file(path) {
+            if let Ok(file) = ops::read_text_file(path) {
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                search::upsert_document(conn, &file_doc(abs_path, &name, &file.content))?;
+            }
+        }
+    } else {
+        search::delete_document(conn, TYPE_FILE, abs_path)?;
     }
-    let mut count = 0;
+    Ok(())
+}
 
+/// §15.3 索引を全再構築する。DBロックを取らずにファイルを収集し、書込は1トランザクションで行う。
+/// `file_docs` は `collect_workspace_docs` でロック外に用意したファイル索引。
+pub fn reindex(conn: &mut Connection, file_docs: Vec<SearchDocInput>) -> Result<usize, AppError> {
+    let mut docs: Vec<SearchDocInput> = Vec::new();
     for task in tasks::list_tasks(conn, &TaskFilter::default(), chrono::Utc::now())? {
-        index_task(conn, &task)?;
-        count += 1;
+        docs.push(task_doc(&task));
     }
     for event in all_events(conn)? {
-        index_event(conn, &event)?;
-        count += 1;
+        docs.push(event_doc(&event));
     }
     for meeting in meetings::list_meetings(conn, 10_000)? {
         let segments = meetings::list_segments(conn, &meeting.id)?;
-        index_meeting(conn, &meeting, &segments)?;
-        count += 1;
+        docs.push(meeting_doc(&meeting, &segments));
     }
-    if let Some(root) = workspace_root {
-        count += index_files_under(conn, root, root, 0)?;
+    docs.extend(file_docs);
+
+    let tx = conn.transaction()?;
+    for entity_type in [TYPE_FILE, TYPE_MEETING, TYPE_TASK, TYPE_EVENT] {
+        search::delete_by_type(&tx, entity_type)?;
     }
-    Ok(count)
+    for doc in &docs {
+        search::upsert_document(&tx, doc)?;
+    }
+    tx.commit()?;
+    Ok(docs.len())
 }
 
 const IGNORED_DIRS: &[&str] = &["node_modules", ".git", "target", "dist", ".venv", "__pycache__"];
@@ -150,20 +171,21 @@ fn all_events(conn: &Connection) -> Result<Vec<EventRecord>, AppError> {
     events::list_events_in_range(conn, "0000-01-01T00:00:00Z", "9999-12-31T23:59:59Z")
 }
 
-fn index_files_under(
-    conn: &Connection,
-    root: &Path,
-    dir: &Path,
-    depth: usize,
-) -> Result<usize, AppError> {
+/// DBロックを取らずにworkspace_root配下のテキストファイルを索引ドキュメントへ収集する。
+pub fn collect_workspace_docs(root: &Path) -> Vec<SearchDocInput> {
+    let mut docs = Vec::new();
+    collect_files_under(root, 0, &mut docs);
+    docs
+}
+
+fn collect_files_under(dir: &Path, depth: usize, out: &mut Vec<SearchDocInput>) {
     if depth > MAX_DEPTH {
-        return Ok(0);
+        return;
     }
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
-        Err(_) => return Ok(0),
+        Err(_) => return,
     };
-    let mut count = 0;
     for entry in entries.flatten() {
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().into_owned();
@@ -175,17 +197,14 @@ fn index_files_under(
             Err(_) => continue,
         };
         if file_type.is_dir() {
-            count += index_files_under(conn, root, &path, depth + 1)?;
+            collect_files_under(&path, depth + 1, out);
         } else if file_type.is_file() && should_index_file(&path) {
             if let Ok(file) = ops::read_text_file(&path) {
                 let abs = path.to_string_lossy().into_owned();
-                if search::upsert_document(conn, &file_doc(&abs, &name, &file.content)).is_ok() {
-                    count += 1;
-                }
+                out.push(file_doc(&abs, &name, &file.content));
             }
         }
     }
-    Ok(count)
 }
 
 fn should_index_file(path: &Path) -> bool {
@@ -280,7 +299,7 @@ mod tests {
 
     #[test]
     fn 再インデックスでタスクと会議を検索できる() {
-        let (_dir, conn) = temp_conn();
+        let (_dir, mut conn) = temp_conn();
         create_task(
             &conn,
             &TaskInput {
@@ -307,22 +326,46 @@ mod tests {
             },
         )
         .unwrap();
-        let count = reindex(&conn, None).unwrap();
+        let count = reindex(&mut conn, Vec::new()).unwrap();
         assert!(count >= 2, "少なくともタスクと会議が索引される: {count}");
         assert_eq!(search(&conn, "在庫を数える", &[], 20, 0).unwrap().len(), 1);
         assert_eq!(search(&conn, "棚卸し会議", &[], 20, 0).unwrap()[0].entity_type, "meeting");
     }
 
     #[test]
-    fn 再インデックスはファイルも走査する() {
-        let (_dir, conn) = temp_conn();
+    fn ファイル収集は無視ディレクトリと非テキストを除外する() {
         let ws = tempfile::tempdir().unwrap();
         std::fs::write(ws.path().join("メモ.md"), "# 見出し\n横断的な検索対象の本文\n").unwrap();
+        std::fs::write(ws.path().join("画像.png"), [0u8, 1, 2, 3]).unwrap();
         std::fs::create_dir(ws.path().join("node_modules")).unwrap();
         std::fs::write(ws.path().join("node_modules").join("ignored.md"), "無視される本文").unwrap();
-        reindex(&conn, Some(ws.path())).unwrap();
-        let results = search(&conn, "横断的な検索対象", &[], 20, 0).unwrap();
-        assert_eq!(results.len(), 1);
-        assert!(search(&conn, "無視される本文", &[], 20, 0).unwrap().is_empty());
+        let docs = collect_workspace_docs(ws.path());
+        assert_eq!(docs.len(), 1);
+        assert_eq!(docs[0].entity_type, "file");
+        assert!(docs[0].body.contains("横断的な検索対象"));
+    }
+
+    #[test]
+    fn 収集したファイルドキュメントで検索できる() {
+        let (_dir, mut conn) = temp_conn();
+        let ws = tempfile::tempdir().unwrap();
+        std::fs::write(ws.path().join("メモ.md"), "横断的な検索対象の本文\n").unwrap();
+        let file_docs = collect_workspace_docs(ws.path());
+        reindex(&mut conn, file_docs).unwrap();
+        assert_eq!(search(&conn, "横断的な検索対象", &[], 20, 0).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn sync_pathは追加で出現し削除で消える() {
+        let (_dir, conn) = temp_conn();
+        let ws = tempfile::tempdir().unwrap();
+        let file = ws.path().join("追記メモ.md");
+        std::fs::write(&file, "後から追加した検索本文\n").unwrap();
+        let abs = file.to_string_lossy().into_owned();
+        sync_path(&conn, &abs).unwrap();
+        assert_eq!(search(&conn, "後から追加した検索本文", &[], 20, 0).unwrap().len(), 1);
+        std::fs::remove_file(&file).unwrap();
+        sync_path(&conn, &abs).unwrap();
+        assert!(search(&conn, "後から追加した検索本文", &[], 20, 0).unwrap().is_empty());
     }
 }
