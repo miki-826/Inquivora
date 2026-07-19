@@ -14,7 +14,8 @@ export function VerticalNav() {
           title={item.label}
           aria-label={item.label}
         >
-          <item.icon size={20} />
+          <item.icon size={22} />
+          <span className="vertical-nav__label">{item.label}</span>
         </NavLink>
       ))}
       <div className="vertical-nav__spacer" />
@@ -25,7 +26,8 @@ export function VerticalNav() {
           title={settingsItem.label}
           aria-label={settingsItem.label}
         >
-          <settingsItem.icon size={20} />
+          <settingsItem.icon size={22} />
+          <span className="vertical-nav__label">{settingsItem.label}</span>
         </NavLink>
       )}
     </nav>

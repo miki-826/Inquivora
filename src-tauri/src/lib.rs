@@ -128,6 +128,7 @@ pub fn run() {
             commands::meetings::meeting_list_segments,
             commands::meetings::meeting_append_segment,
             commands::meetings::meeting_list_devices,
+            commands::meetings::meeting_transcription_ready,
             commands::meetings::meeting_summary_available,
             commands::meetings::meeting_list_decisions,
             commands::meetings::meeting_list_candidates,

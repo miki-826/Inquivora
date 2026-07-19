@@ -45,6 +45,20 @@ pub struct MeetingStartInput {
     pub chunk_seconds: Option<i64>,
 }
 
+/// 文字起こしが可能か（ローカルWhisperモデル導入済み、またはAPI設定済み）を返す。
+/// 会議開始ダイアログで未準備時の案内表示に使う。
+#[tauri::command]
+pub fn meeting_transcription_ready(app: AppHandle) -> Result<bool, AppError> {
+    let state = app.state::<DbState>();
+    let conn = state.0.lock().map_err(lock_error)?;
+    let selected = whisper::models::selected_model(&conn)?;
+    let models_dir = whisper::download::models_dir(&app)?;
+    let local_available = whisper::models::model_path(&models_dir, &selected)
+        .map(|p| p.is_file())
+        .unwrap_or(false);
+    Ok(whisper::route::resolve_transcription_route(&conn, local_available).is_ok())
+}
+
 #[tauri::command]
 pub async fn meeting_start(app: AppHandle, input: MeetingStartInput) -> Result<Meeting, AppError> {
     if !input.mic && !input.loopback {

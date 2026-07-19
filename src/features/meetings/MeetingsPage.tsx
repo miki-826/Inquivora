@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { PanePlaceholder } from "../../components/common/PanePlaceholder";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
-import { listAudioDevices, type AudioDevice } from "../../services/meetings";
+import {
+  isTranscriptionReady,
+  listAudioDevices,
+  type AudioDevice,
+} from "../../services/meetings";
 import { loadSetting, saveSetting } from "../../services/settings";
 import { useMeetingStore } from "../../stores/useMeetingStore";
 import { useWorkspaceStore } from "../../stores/useWorkspaceStore";
@@ -82,6 +87,7 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
   const workspace = useWorkspaceStore((s) => s.workspace);
   const start = useMeetingStore((s) => s.start);
   const busy = useMeetingStore((s) => s.busy);
+  const navigate = useNavigate();
 
   const [title, setTitle] = useState("");
   const [customPath, setCustomPath] = useState<string | null>(null);
@@ -91,7 +97,20 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
   const [loopbackDevices, setLoopbackDevices] = useState<AudioDevice[]>([]);
   const [micDeviceId, setMicDeviceId] = useState("default");
   const [loopbackDeviceId, setLoopbackDeviceId] = useState("default");
+  const [transcriptionReady, setTranscriptionReady] = useState(true);
   const [localError, setLocalError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void isTranscriptionReady()
+      .then((ready) => {
+        if (!cancelled) setTranscriptionReady(ready);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -153,6 +172,24 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
     <div className="meeting-dialog__backdrop">
       <div className="meeting-dialog" role="dialog" aria-label="会議を開始">
         <h2 className="meeting-dialog__title">会議を開始</h2>
+        {!transcriptionReady && (
+          <div className="meeting-setup-hint" role="alert">
+            <p>
+              文字起こしの準備ができていません。ローカルのWhisperモデルをダウンロードするか、
+              AI（接続先）を設定すると文字起こしできます。
+            </p>
+            <button
+              type="button"
+              className="meeting-setup-hint__button"
+              onClick={() => {
+                onClose();
+                navigate("/settings/ai");
+              }}
+            >
+              文字起こしの設定を開く
+            </button>
+          </div>
+        )}
         <label className="settings-field">
           タイトル
           <input

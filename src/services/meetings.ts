@@ -94,6 +94,10 @@ export async function isSummaryAvailable(): Promise<boolean> {
   return (await invoke("meeting_summary_available")) === true;
 }
 
+export async function isTranscriptionReady(): Promise<boolean> {
+  return (await invoke("meeting_transcription_ready")) === true;
+}
+
 export async function generateSummary(meetingId: string): Promise<MeetingSummaryResult> {
   return meetingSummaryResultSchema.parse(await invoke("meeting_generate_summary", { meetingId }));
 }

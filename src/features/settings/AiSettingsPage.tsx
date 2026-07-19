@@ -6,6 +6,7 @@ import * as whisperApi from "../../services/whisper";
 import {
   downloadPercent,
   formatModelSize,
+  modelHint,
   type WhisperModelStatus,
 } from "./whisperModel";
 import type { ConnectionTestResult, FeatureBinding } from "../../services/providers";
@@ -128,19 +129,19 @@ function ProviderForm({
   return (
     <section className="settings-section">
       <h2 className="settings-section__title">
-        {form.id ? "Providerを編集" : "Providerを追加"}
+        {form.id ? "AIを編集" : "AIを追加"}
       </h2>
       <label className="settings-field">
-        表示名
+        名前（自由入力）
         <input
           type="text"
           value={form.displayName}
-          placeholder="OpenAI Personal"
+          placeholder="例: OpenAI（自分用）"
           onChange={(e) => setForm({ ...form, displayName: e.target.value })}
         />
       </label>
       <label className="settings-field">
-        Provider種別
+        AIの種類
         <select
           value={form.providerType}
           onChange={(e) => {
@@ -535,7 +536,9 @@ function WhisperSection() {
         </p>
       )}
       <div className="whisper-models">
-        {models.map((model) => (
+        {models.map((model) => {
+          const hint = modelHint(model.name);
+          return (
           <div key={model.name} className="whisper-model">
             <label className="whisper-model__select">
               <input
@@ -544,9 +547,13 @@ function WhisperSection() {
                 checked={model.selected}
                 onChange={() => void select(model.name)}
               />
-              <span>{model.displayName}</span>
+              <span className="whisper-model__name">
+                {model.displayName}
+                {hint.recommended && <span className="whisper-model__badge">推奨</span>}
+              </span>
               <span className="whisper-model__size">{formatModelSize(model.sizeMb)}</span>
             </label>
+            <p className="whisper-model__hint">{hint.tagline}</p>
             {model.downloaded ? (
               <span className="whisper-model__downloaded">ダウンロード済み</span>
             ) : (
@@ -563,7 +570,8 @@ function WhisperSection() {
               </button>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
@@ -622,9 +630,9 @@ export function AiSettingsPage() {
     <ThreePaneLayout left={<SettingsNav />}>
       <div className="settings-page">
         <section className="settings-section">
-          <h2 className="settings-section__title">API Provider</h2>
+          <h2 className="settings-section__title">AI（接続先）</h2>
           <p className="settings-note">
-            APIキーはWindows Credential Managerへ保存され、アプリのデータベースやログには含まれません。
+            要約や高精度な文字起こしに使うAIを登録します。APIキーはあなたのPCのWindows資格情報マネージャーにのみ保存され、アプリのデータベースやログには残りません。
           </p>
           {error && (
             <p className="settings-actions__error" role="alert">
@@ -643,7 +651,7 @@ export function AiSettingsPage() {
           {!form && (
             <div className="settings-actions">
               <button type="button" onClick={() => setForm(emptyForm())}>
-                Providerを追加
+                AIを追加
               </button>
             </div>
           )}
