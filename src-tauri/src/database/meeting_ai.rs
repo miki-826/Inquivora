@@ -69,7 +69,7 @@ pub fn replace_decisions(
 pub fn list_decisions(conn: &Connection, meeting_id: &str) -> Result<Vec<MeetingDecision>, AppError> {
     let mut stmt = conn.prepare(
         "SELECT id, meeting_id, text, source_start_ms, created_at
-         FROM meeting_decisions WHERE meeting_id = ?1 ORDER BY created_at, id",
+         FROM meeting_decisions WHERE meeting_id = ?1 ORDER BY rowid",
     )?;
     let rows = stmt.query_map([meeting_id], row_to_decision)?;
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -154,7 +154,7 @@ pub fn replace_candidates(
 pub fn list_candidates(conn: &Connection, meeting_id: &str) -> Result<Vec<TaskCandidate>, AppError> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {CANDIDATE_COLUMNS} FROM task_candidates
-         WHERE meeting_id = ?1 ORDER BY created_at, id"
+         WHERE meeting_id = ?1 ORDER BY rowid"
     ))?;
     let rows = stmt.query_map([meeting_id], row_to_candidate)?;
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
