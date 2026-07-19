@@ -76,6 +76,7 @@ pub fn run() {
             commands::files::file_open_external,
             commands::files::file_detect_type,
             commands::files::file_read_base64,
+            commands::files::file_import,
             commands::files::tabs_save,
             commands::files::tabs_load,
             commands::tasks::task_create,

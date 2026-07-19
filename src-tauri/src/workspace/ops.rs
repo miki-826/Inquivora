@@ -235,6 +235,55 @@ pub fn read_file_base64(path: &Path) -> Result<String, AppError> {
     Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
 }
 
+/// dir/name が空いていればそのパスを、衝突する場合は「name (2)」のように
+/// 拡張子の前へ連番を付けた未使用パスを返す。
+pub fn unique_destination(dir: &Path, name: &str) -> std::path::PathBuf {
+    let candidate = dir.join(name);
+    if !candidate.exists() {
+        return candidate;
+    }
+    let path = Path::new(name);
+    let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let ext = path.extension().map(|e| e.to_string_lossy().into_owned());
+    for index in 2.. {
+        let numbered = match &ext {
+            Some(ext) => format!("{stem} ({index}).{ext}"),
+            None => format!("{stem} ({index})"),
+        };
+        let candidate = dir.join(numbered);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    unreachable!("空きファイル名が必ず見つかる")
+}
+
+/// エクスプローラー等からドロップされたファイルをdir配下へ取り込む。
+/// 同名衝突時は連番を付けて別名保存し、実際の保存先を返す。
+pub fn import_file(dir: &Path, name: &str, bytes: &[u8]) -> Result<std::path::PathBuf, AppError> {
+    let file_name = Path::new(name)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .filter(|n| !n.is_empty())
+        .ok_or_else(|| io_error("取り込むファイル名が不正です"))?;
+    std::fs::create_dir_all(dir).map_err(|e| io_error(format!("取込先を作成できません: {e}")))?;
+    let destination = unique_destination(dir, &file_name);
+    let temp_path = dir.join(format!(".{file_name}.{}.tmp", uuid::Uuid::new_v4()));
+    let write_result = (|| -> std::io::Result<()> {
+        use std::io::Write;
+        let mut file = std::fs::File::create(&temp_path)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&temp_path, &destination)
+    })();
+    if let Err(e) = write_result {
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(io_error(format!("取り込みに失敗しました: {e}")));
+    }
+    Ok(destination)
+}
+
 pub fn move_entry(source: &Path, destination: &Path) -> Result<(), AppError> {
     if destination.exists() {
         return Err(io_error(format!("移動先がすでに存在します: {}", destination.display())));

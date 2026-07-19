@@ -143,6 +143,24 @@ pub fn file_read_base64(ws: State<'_, WorkspaceState>, path: String) -> Result<S
     ops::read_file_base64(checked_path(&ws, &path)?)
 }
 
+/// エクスプローラー等からドロップされたファイルをbase64で受け取り、
+/// target_dir配下へ取り込む。同名衝突時は連番で別名保存する。
+#[tauri::command]
+pub fn file_import(
+    ws: State<'_, WorkspaceState>,
+    target_dir: String,
+    name: String,
+    contents_base64: String,
+) -> Result<(), AppError> {
+    use base64::Engine;
+    let dir = checked_path(&ws, &target_dir)?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(contents_base64.as_bytes())
+        .map_err(|e| AppError::new("VALIDATION_ERROR", format!("取込データが不正です: {e}"), false))?;
+    ops::import_file(dir, &name, &bytes)?;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn tabs_save(
     db: State<'_, DbState>,
