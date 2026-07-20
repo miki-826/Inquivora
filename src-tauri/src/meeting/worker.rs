@@ -34,14 +34,29 @@ struct JobContext {
     chunk: ChunkInfo,
 }
 
+/// 常駐Whisperをこの回数だけ連続アイドルしたら終了させ、モデル分のメモリを解放する。
+const WHISPER_IDLE_POLLS: u32 = 15;
+
 /// §10.12 APIジョブワーカー。文字起こしジョブを順に処理する。
 pub fn spawn(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
+        let mut idle_polls: u32 = 0;
         loop {
             tokio::time::sleep(POLL_INTERVAL).await;
             match process_next(&app).await {
-                Ok(true) => continue,
-                Ok(false) => {}
+                Ok(true) => {
+                    idle_polls = 0;
+                    continue;
+                }
+                Ok(false) => {
+                    idle_polls = idle_polls.saturating_add(1);
+                    if idle_polls == WHISPER_IDLE_POLLS {
+                        let runtime = app.state::<crate::whisper::sidecar::WhisperRuntime>();
+                        if runtime.is_running().await {
+                            runtime.shutdown().await;
+                        }
+                    }
+                }
                 Err(err) => eprintln!("APIジョブ処理に失敗: {}", err.message),
             }
         }

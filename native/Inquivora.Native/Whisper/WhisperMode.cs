@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using Whisper.net;
 
@@ -9,8 +10,21 @@ namespace Inquivora.Native.Whisper;
 /// </summary>
 public static class WhisperMode
 {
+    // UIを優先するため、推論に使うスレッドはCPUの半分に抑える（残りをUI・OSへ残す）。
+    private static readonly int Threads = Math.Max(1, Environment.ProcessorCount / 2);
+
     public static int Run(TextReader input, TextWriter output, TextWriter log)
     {
+        // 文字起こし中もアプリ本体（UI）が優先されるよう、このプロセスの優先度を下げる。
+        try
+        {
+            Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.BelowNormal;
+        }
+        catch
+        {
+            // 権限等で設定できなくても続行する。
+        }
+
         WhisperFactory? factory = null;
         string? loadedModelPath = null;
         try
@@ -76,7 +90,7 @@ public static class WhisperMode
 
     private static string Transcribe(WhisperFactory factory, string wavPath, string language)
     {
-        using var processor = factory.CreateBuilder().WithLanguage(language).Build();
+        using var processor = factory.CreateBuilder().WithLanguage(language).WithThreads(Threads).Build();
         using var stream = File.OpenRead(wavPath);
         var builder = new StringBuilder();
         var task = Task.Run(async () =>
