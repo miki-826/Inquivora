@@ -1,4 +1,5 @@
 import { useEditorStore } from "../../stores/useEditorStore";
+import packageInfo from "../../../package.json";
 
 const ENCODING_LABELS: Record<string, string> = {
   utf8: "UTF-8",
@@ -27,7 +28,7 @@ export function StatusBar() {
           <span>{activeTab.lineEnding}</span>
         </>
       )}
-      <span>Inquivora 0.1.0</span>
+      <span>Inquivora {packageInfo.version}</span>
     </footer>
   );
 }

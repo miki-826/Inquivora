@@ -27,6 +27,26 @@ function errorMessage(err: unknown): string {
   return String(err);
 }
 
+function replaceTask(tasks: Task[], task: Task): Task[] {
+  const index = tasks.findIndex((item) => item.id === task.id);
+  if (index < 0) return [task, ...tasks];
+  const next = [...tasks];
+  next[index] = task;
+  return next;
+}
+
+function optimisticTask(task: Task, patch: TaskPatch): Task {
+  const status = patch.status ?? task.status;
+  return {
+    ...task,
+    ...patch,
+    status,
+    updatedAt: new Date().toISOString(),
+    completedAt:
+      status === "completed" ? task.completedAt ?? new Date().toISOString() : null,
+  };
+}
+
 export const useTaskStore = create<TaskState>((set, get) => ({
   tasks: [],
   allTasks: [],
@@ -49,8 +69,11 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   setFilter: (filter) => {
-    set({ filter });
-    void get().load();
+    set({ filter, loading: true });
+    void taskService
+      .listTasks(filter)
+      .then((tasks) => set({ tasks, loading: false, error: null }))
+      .catch((err) => set({ loading: false, error: errorMessage(err) }));
   },
 
   select: (id) => set({ selectedId: id }),
@@ -58,8 +81,16 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   createTask: async (input) => {
     try {
       const task = await taskService.createTask(input);
-      await get().load();
-      set({ selectedId: task.id, error: null });
+      set((state) => ({
+        tasks: replaceTask(state.tasks, task),
+        allTasks: replaceTask(state.allTasks, task),
+        selectedId: task.id,
+        error: null,
+      }));
+      void taskService
+        .listTasks(get().filter)
+        .then((tasks) => set({ tasks }))
+        .catch(() => undefined);
       return task;
     } catch (err) {
       set({ error: errorMessage(err) });
@@ -68,37 +99,85 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   },
 
   updateTask: async (id, patch) => {
+    const snapshot = get();
+    const current =
+      snapshot.allTasks.find((task) => task.id === id) ??
+      snapshot.tasks.find((task) => task.id === id);
+    if (current) {
+      const optimistic = optimisticTask(current, patch);
+      set({
+        tasks: replaceTask(snapshot.tasks, optimistic),
+        allTasks: replaceTask(snapshot.allTasks, optimistic),
+      });
+    }
     try {
-      await taskService.updateTask(id, patch);
-      await get().load();
-      set({ error: null });
+      const saved = await taskService.updateTask(id, patch);
+      set((state) => ({
+        tasks: replaceTask(state.tasks, saved),
+        allTasks: replaceTask(state.allTasks, saved),
+        error: null,
+      }));
+      void taskService
+        .listTasks(get().filter)
+        .then((tasks) => set({ tasks }))
+        .catch(() => undefined);
     } catch (err) {
-      set({ error: errorMessage(err) });
+      set({
+        tasks: snapshot.tasks,
+        allTasks: snapshot.allTasks,
+        error: errorMessage(err),
+      });
     }
   },
 
   removeTask: async (id) => {
+    const snapshot = get();
+    set({
+      tasks: snapshot.tasks.filter((task) => task.id !== id),
+      allTasks: snapshot.allTasks.filter((task) => task.id !== id),
+      selectedId: snapshot.selectedId === id ? null : snapshot.selectedId,
+    });
     try {
       await taskService.deleteTask(id);
-      if (get().selectedId === id) set({ selectedId: null });
-      await get().load();
       set({ error: null });
     } catch (err) {
-      set({ error: errorMessage(err) });
+      set({
+        tasks: snapshot.tasks,
+        allTasks: snapshot.allTasks,
+        selectedId: snapshot.selectedId,
+        error: errorMessage(err),
+      });
     }
   },
 
   toggleComplete: async (task) => {
+    const snapshot = get();
+    const nextStatus = task.status === "completed" ? "todo" : "completed";
+    const optimistic = optimisticTask(task, { status: nextStatus });
+    set({
+      tasks: replaceTask(snapshot.tasks, optimistic),
+      allTasks: replaceTask(snapshot.allTasks, optimistic),
+    });
     try {
-      if (task.status === "completed") {
-        await taskService.reopenTask(task.id);
-      } else {
-        await taskService.completeTask(task.id);
-      }
-      await get().load();
-      set({ error: null });
+      const saved =
+        task.status === "completed"
+          ? await taskService.reopenTask(task.id)
+          : await taskService.completeTask(task.id);
+      set((state) => ({
+        tasks: replaceTask(state.tasks, saved),
+        allTasks: replaceTask(state.allTasks, saved),
+        error: null,
+      }));
+      void taskService
+        .listTasks(get().filter)
+        .then((tasks) => set({ tasks }))
+        .catch(() => undefined);
     } catch (err) {
-      set({ error: errorMessage(err) });
+      set({
+        tasks: snapshot.tasks,
+        allTasks: snapshot.allTasks,
+        error: errorMessage(err),
+      });
     }
   },
 

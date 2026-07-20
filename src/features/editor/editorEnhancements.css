@@ -3,6 +3,15 @@
   pointer-events: auto;
 }
 
+/* Monacoはスクロール操作を維持したまま、縦横バーだけを完全に隠す。 */
+.editor-pane__monaco .monaco-scrollable-element > .scrollbar,
+.editor-pane__monaco .monaco-scrollable-element > .shadow {
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;

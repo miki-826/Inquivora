@@ -3,7 +3,7 @@ import type { EventRecord } from "../features/calendar/calendarModel";
 import type { Task } from "../features/tasks/taskModel";
 import * as eventService from "../services/events";
 import type { EventInput, EventPatch } from "../services/events";
-import { listTasks } from "../services/tasks";
+import { listTasks, updateTask } from "../services/tasks";
 
 type CalendarState = {
   events: EventRecord[];
@@ -17,6 +17,7 @@ type CalendarState = {
   createEvent: (input: EventInput) => Promise<EventRecord | null>;
   updateEvent: (id: string, patch: EventPatch) => Promise<boolean>;
   removeEvent: (id: string) => Promise<void>;
+  scheduleTask: (id: string, dueAtUtc: string) => Promise<boolean>;
   setFocusEventId: (id: string | null) => void;
 };
 
@@ -60,8 +61,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
   createEvent: async (input) => {
     try {
       const event = await eventService.createEvent(input);
-      await get().reload();
-      set({ error: null });
+      set((state) => ({ events: [...state.events, event], error: null }));
       return event;
     } catch (err) {
       set({ error: errorMessage(err) });
@@ -70,25 +70,60 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
   },
 
   updateEvent: async (id, patch) => {
+    const snapshot = get().events;
+    const current = snapshot.find((event) => event.id === id);
+    if (current) {
+      set({
+        events: snapshot.map((event) =>
+          event.id === id
+            ? { ...event, ...patch, updatedAt: new Date().toISOString() }
+            : event,
+        ),
+      });
+    }
     try {
-      await eventService.updateEvent(id, patch);
-      await get().reload();
-      set({ error: null });
+      const saved = await eventService.updateEvent(id, patch);
+      set((state) => ({
+        events: state.events.map((event) => (event.id === id ? saved : event)),
+        error: null,
+      }));
       return true;
     } catch (err) {
-      set({ error: errorMessage(err) });
-      await get().reload();
+      set({ events: snapshot, error: errorMessage(err) });
       return false;
     }
   },
 
   removeEvent: async (id) => {
+    const snapshot = get().events;
+    set({ events: snapshot.filter((event) => event.id !== id) });
     try {
       await eventService.deleteEvent(id);
-      await get().reload();
       set({ error: null });
     } catch (err) {
-      set({ error: errorMessage(err) });
+      set({ events: snapshot, error: errorMessage(err) });
+    }
+  },
+
+  scheduleTask: async (id, dueAtUtc) => {
+    const snapshot = get().tasks;
+    const current = snapshot.find((task) => task.id === id);
+    if (!current) return false;
+    set({
+      tasks: snapshot.map((task) =>
+        task.id === id ? { ...task, dueAtUtc, updatedAt: new Date().toISOString() } : task,
+      ),
+    });
+    try {
+      const saved = await updateTask(id, { dueAtUtc });
+      set((state) => ({
+        tasks: state.tasks.map((task) => (task.id === id ? saved : task)),
+        error: null,
+      }));
+      return true;
+    } catch (err) {
+      set({ tasks: snapshot, error: errorMessage(err) });
+      return false;
     }
   },
 }));

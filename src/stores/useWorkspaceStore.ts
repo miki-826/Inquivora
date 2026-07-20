@@ -70,6 +70,28 @@ function treeStateKey(workspaceId: string): string {
   return `workspace.tree.${workspaceId}`;
 }
 
+function samePath(left: string | null, right: string): boolean {
+  return (
+    typeof left === "string" &&
+    left.replace(/\//g, "\\").toLowerCase() === right.replace(/\//g, "\\").toLowerCase()
+  );
+}
+
+async function runWithConcurrency(
+  values: string[],
+  concurrency: number,
+  action: (value: string) => Promise<void>,
+): Promise<void> {
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(concurrency, values.length) }, async () => {
+    while (cursor < values.length) {
+      const value = values[cursor++];
+      await action(value).catch(() => undefined);
+    }
+  });
+  await Promise.all(workers);
+}
+
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
   async function loadChildrenOf(relativePath: string): Promise<void> {
     const entries = await ws.listChildren(relativePath);
@@ -120,6 +142,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
 
     openWorkspacePath: async (path) => {
       await runTreeAction(async () => {
+        const lastOpenedPath = await loadSetting<string>(LAST_WORKSPACE_KEY).catch(() => null);
         const workspace = await ws.openWorkspace(path);
         const stored = await loadSetting<{ expanded?: string[] }>(treeStateKey(workspace.id)).catch(
           () => null,
@@ -135,12 +158,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         });
         await saveSetting(LAST_WORKSPACE_KEY, path).catch(() => undefined);
         await loadChildrenOf("");
-        await Promise.all(
-          expanded.map((folder) => loadChildrenOf(folder).catch(() => undefined)),
-        );
+        await runWithConcurrency(expanded, 4, loadChildrenOf);
         await get().loadRecent();
-        // 開いたワークスペースを背景で索引する（ボタン不要・UIをブロックしない）
-        void reindexWorkspace().catch((err) => console.error("検索索引の構築に失敗", err));
+        // 同じワークスペースを起動するたびに全走査しない。稼働中の変更は監視で増分反映される。
+        if (!samePath(lastOpenedPath, path)) {
+          void reindexWorkspace().catch((err) => console.error("検索索引の構築に失敗", err));
+        }
       });
     },
 
@@ -177,7 +200,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         const loaded = Object.keys(children);
         const keep = loaded.filter((path) => path === "" || expanded.includes(path));
         set({ children: {} });
-        await Promise.all(keep.map((path) => loadChildrenOf(path).catch(() => undefined)));
+        await runWithConcurrency(keep, 4, loadChildrenOf);
       });
     },
 

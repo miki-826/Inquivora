@@ -11,25 +11,29 @@
 }
 
 .task-row__color {
-  width: 9px;
-  height: 9px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
   flex: 0 0 auto;
+  box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 3px var(--color-border);
 }
 
 .task-color-picker {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 8px 0;
-  border: 0;
+  flex-wrap: wrap;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-subtle);
 }
 
 .task-color-picker legend {
-  float: left;
-  margin-right: 10px;
+  padding: 0 5px;
   color: var(--color-text-muted);
   font-size: 12px;
+  font-weight: 600;
 }
 
 .task-color-picker label {
@@ -45,16 +49,32 @@
 }
 
 .task-color-picker label > span[aria-hidden] {
-  width: 20px;
-  height: 20px;
-  border: 2px solid transparent;
+  position: relative;
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--color-surface);
   border-radius: 50%;
-  box-shadow: 0 0 0 1px var(--color-border);
+  box-shadow: 0 0 0 1px var(--color-border), 0 2px 5px rgba(15, 23, 42, 0.14);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.task-color-picker label:hover > span[aria-hidden] {
+  transform: translateY(-1px) scale(1.07);
+  box-shadow: 0 0 0 2px var(--color-primary), 0 4px 9px rgba(15, 23, 42, 0.18);
 }
 
 .task-color-picker input:checked + span[aria-hidden] {
   border-color: var(--color-surface);
-  box-shadow: 0 0 0 2px var(--color-text);
+  box-shadow: 0 0 0 3px var(--color-primary), 0 4px 10px rgba(37, 99, 235, 0.25);
+}
+
+.task-color-picker input:checked + span[aria-hidden]::after {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border-right: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(45deg) translate(-1px, -2px);
 }
 
 .task-color-picker input:focus-visible + span[aria-hidden] {

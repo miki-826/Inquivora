@@ -172,7 +172,37 @@ pub fn write_file_docs(conn: &mut Connection, docs: &[SearchDocInput]) -> Result
     Ok(())
 }
 
-const IGNORED_DIRS: &[&str] = &["node_modules", ".git", "target", "dist", ".venv", "__pycache__"];
+/// 変更パスの古い索引を削除し、読み込み済みの最新内容を短い1トランザクションで登録する。
+/// ファイル読み込みは呼び出し側でDBロック前に完了させる。
+pub fn replace_file_docs(
+    conn: &mut Connection,
+    paths: &[String],
+    docs: &[SearchDocInput],
+) -> Result<(), AppError> {
+    if paths.is_empty() {
+        return Ok(());
+    }
+    let tx = conn.transaction()?;
+    for path in paths {
+        search::delete_document(&tx, TYPE_FILE, path)?;
+    }
+    for doc in docs {
+        search::upsert_document(&tx, doc)?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+const IGNORED_DIRS: &[&str] = &[
+    "node_modules",
+    ".git",
+    "target",
+    "dist",
+    "build",
+    ".next",
+    ".venv",
+    "__pycache__",
+];
 const MAX_DEPTH: usize = 12;
 const MAX_INDEX_BYTES: u64 = 2 * 1024 * 1024;
 /// 一度に読み込む索引対象ファイル数。省メモリのためバッチ単位で処理する。

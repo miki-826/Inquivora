@@ -1,3 +1,6 @@
+use std::collections::HashSet;
+use std::path::PathBuf;
+
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::commands::workspace::{active_root, WorkspaceState};
@@ -62,9 +65,16 @@ pub fn search_reindex_workspace(app: AppHandle, ws: State<'_, WorkspaceState>) -
 /// 変更されたパスだけを索引へ反映する（ウォッチャの外部変更追従用）。
 #[tauri::command]
 pub fn search_index_paths(db: State<'_, DbState>, paths: Vec<String>) -> Result<(), AppError> {
-    let conn = db.0.lock().map_err(lock_error)?;
-    for path in &paths {
-        let _ = indexer::sync_path(&conn, path);
-    }
-    Ok(())
+    let mut seen = HashSet::new();
+    let paths: Vec<String> = paths
+        .into_iter()
+        .filter(|path| seen.insert(path.clone()))
+        .collect();
+    let path_bufs: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
+
+    // ディスクI/OはDB mutexの外で行う。これにより大量の監視イベント中でも
+    // タスク・予定・設定など他のDB操作を待たせない。
+    let docs = indexer::read_file_docs(&path_bufs);
+    let mut conn = db.0.lock().map_err(lock_error)?;
+    indexer::replace_file_docs(&mut conn, &paths, &docs)
 }

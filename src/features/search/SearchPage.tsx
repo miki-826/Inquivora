@@ -1,9 +1,9 @@
 import { listen } from "@tauri-apps/api/event";
-import { Search } from "lucide-react";
+import { RefreshCw, Search } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
-import { searchGlobal } from "../../services/search";
+import { reindexWorkspace, searchGlobal } from "../../services/search";
 import { useEditorStore } from "../../stores/useEditorStore";
 import { useMeetingStore } from "../../stores/useMeetingStore";
 import { useTaskStore } from "../../stores/useTaskStore";
@@ -81,6 +81,17 @@ export function SearchPage() {
     }
   }, [query, selectedTypes]);
 
+  const rebuildIndex = async () => {
+    setIndexing(true);
+    setError(null);
+    try {
+      await reindexWorkspace();
+    } catch (err) {
+      setIndexing(false);
+      setError(messageOf(err));
+    }
+  };
+
   useEffect(() => {
     const timer = setTimeout(() => void runSearch(), 250);
     return () => clearTimeout(timer);
@@ -131,6 +142,16 @@ export function SearchPage() {
             />
           </div>
           {indexing && <span className="search-page__indexing">インデックス作成中…</span>}
+          <button
+            type="button"
+            className="search-page__reindex"
+            disabled={indexing}
+            title="ワークスペースの検索索引を更新"
+            onClick={() => void rebuildIndex()}
+          >
+            <RefreshCw size={15} aria-hidden />
+            索引を更新
+          </button>
         </div>
 
         <div className="search-page__filters">

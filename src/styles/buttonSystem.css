@@ -1,0 +1,131 @@
+/* 配置と機能を変えず、アプリ全体のボタン状態を一つのデザインへ揃える。 */
+button {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: linear-gradient(180deg, var(--color-surface), var(--color-surface-subtle));
+  color: var(--color-text);
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.07);
+}
+
+button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--color-primary) 58%, var(--color-border));
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.1);
+  transform: translateY(-1px);
+}
+
+button:active:not(:disabled) {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08), inset 0 1px 2px rgba(15, 23, 42, 0.08);
+  transform: translateY(0);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  box-shadow: none;
+  transform: none;
+}
+
+.button-primary,
+.meeting-page__start,
+.meeting-dialog__start,
+.ws-meeting-panel__start,
+.ai-panel__generate,
+.meeting-setup-hint__button,
+.event-form__submit,
+.file-tree__open-button {
+  border-color: var(--color-primary);
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-hover));
+  color: #fff;
+  box-shadow: 0 3px 9px rgba(37, 99, 235, 0.24);
+}
+
+.button-primary:hover:not(:disabled),
+.meeting-page__start:hover:not(:disabled),
+.meeting-dialog__start:hover:not(:disabled),
+.ws-meeting-panel__start:hover:not(:disabled),
+.ai-panel__generate:hover:not(:disabled),
+.meeting-setup-hint__button:hover:not(:disabled),
+.event-form__submit:hover:not(:disabled),
+.file-tree__open-button:hover:not(:disabled) {
+  border-color: var(--color-primary-hover);
+  background: linear-gradient(135deg, var(--color-primary-hover), var(--color-primary));
+  color: #fff;
+  box-shadow: 0 7px 16px rgba(37, 99, 235, 0.28);
+}
+
+.provider-card__danger,
+.task-detail__delete,
+.event-form__delete {
+  color: var(--color-danger);
+}
+
+.provider-card__danger:hover:not(:disabled),
+.task-detail__delete:hover:not(:disabled),
+.event-form__delete:hover:not(:disabled) {
+  border-color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 10%, var(--color-surface));
+  color: var(--color-danger);
+}
+
+/* 小さなアイコンボタンはサイズを保ち、共通の押下感だけを適用する。 */
+.file-tree__actions button,
+.editor-toolbar__actions button,
+.editor-tab__close,
+.task-row__check,
+.file-tree__error button {
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.file-tree__actions button:hover:not(:disabled),
+.editor-toolbar__actions button:hover:not(:disabled),
+.editor-tab__close:hover:not(:disabled),
+.task-row__check:hover:not(:disabled),
+.file-tree__error button:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--color-primary-soft);
+  box-shadow: none;
+}
+
+.vertical-nav__item {
+  border: 1px solid transparent;
+  transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease,
+    box-shadow 0.12s ease, transform 0.12s ease;
+}
+
+.vertical-nav__item:hover {
+  border-color: var(--color-border);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.07);
+  transform: translateY(-1px);
+}
+
+.vertical-nav__item.active {
+  border-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-primary);
+}
+
+.calendar-page .fc .fc-button {
+  border-radius: 8px;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.09);
+  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease,
+    transform 0.12s ease;
+}
+
+.calendar-page .fc .fc-button:hover:not(:disabled) {
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.12);
+  transform: translateY(-1px);
+}

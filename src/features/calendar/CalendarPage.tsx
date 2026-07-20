@@ -8,7 +8,6 @@ import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 import { useEffect, useRef, useState } from "react";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
 import { getEvent, type EventPatch } from "../../services/events";
-import { updateTask } from "../../services/tasks";
 import { useCalendarStore } from "../../stores/useCalendarStore";
 import { TOKYO_TZ } from "../tasks/taskModel";
 import { TASK_COLOR_VALUES, type Task } from "../tasks/taskModel";
@@ -109,8 +108,8 @@ export function CalendarPage() {
   const tasks = useCalendarStore((s) => s.tasks);
   const error = useCalendarStore((s) => s.error);
   const loadRange = useCalendarStore((s) => s.loadRange);
-  const reload = useCalendarStore((s) => s.reload);
   const updateEvent = useCalendarStore((s) => s.updateEvent);
+  const scheduleTask = useCalendarStore((s) => s.scheduleTask);
   const focusEventId = useCalendarStore((s) => s.focusEventId);
   const setFocusEventId = useCalendarStore((s) => s.setFocusEventId);
   const [selection, setSelection] = useState<CalendarSelection>(null);
@@ -147,12 +146,8 @@ export function CalendarPage() {
     }
     const startAtUtc = calStrToUtc(info.event.startStr, allDay);
     if (kind === "task") {
-      try {
-        await updateTask(sourceId, { dueAtUtc: startAtUtc });
-        await reload();
-      } catch {
-        info.revert();
-      }
+      const ok = await scheduleTask(sourceId, startAtUtc);
+      if (!ok) info.revert();
       return;
     }
     const patch: EventPatch = { startAtUtc, allDay };
@@ -180,14 +175,11 @@ export function CalendarPage() {
       info.revert();
       return;
     }
-    try {
-      await updateTask(sourceId, {
-        dueAtUtc: calStrToUtc(info.event.startStr, info.event.allDay),
-      });
-      await reload();
-    } catch {
-      info.revert();
-    }
+    const ok = await scheduleTask(
+      sourceId,
+      calStrToUtc(info.event.startStr, info.event.allDay),
+    );
+    if (!ok) info.revert();
   };
 
   return (
