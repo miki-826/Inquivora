@@ -1,7 +1,7 @@
 import { DiffEditor, Editor } from "@monaco-editor/react";
 import { listen } from "@tauri-apps/api/event";
 import { Eye, EyeOff, Pin, PinOff, X } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { PanePlaceholder } from "../../components/common/PanePlaceholder";
 import { useEditorStore } from "../../stores/useEditorStore";
 import { useWorkspaceStore } from "../../stores/useWorkspaceStore";
@@ -9,6 +9,22 @@ import type { EditorTab } from "./editorModel";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { MediaView } from "./MediaView";
 import "./monacoSetup";
+
+/// ルートの data-theme を監視し、Monacoのテーマ（vs / vs-dark）を返す。
+function useEditorTheme(): "vs" | "vs-dark" {
+  const read = () =>
+    document.documentElement.getAttribute("data-theme") === "dark" ? "vs-dark" : "vs";
+  const [theme, setTheme] = useState<"vs" | "vs-dark">(read);
+  useEffect(() => {
+    const observer = new MutationObserver(() => setTheme(read()));
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+    return () => observer.disconnect();
+  }, []);
+  return theme;
+}
 
 function TabBar() {
   const tabs = useEditorStore((s) => s.tabs);
@@ -187,6 +203,7 @@ function ActivePane() {
   const readModes = useEditorStore((s) => s.readModes);
   const previewVisible = useEditorStore((s) => s.previewVisible);
   const store = useEditorStore;
+  const editorTheme = useEditorTheme();
 
   const tab = tabs.find((t) => t.id === activeTabId);
   if (!tab) {
@@ -214,6 +231,7 @@ function ActivePane() {
           <Editor
             path={tab.path}
             language={tab.language}
+            theme={editorTheme}
             value={content}
             onChange={(value) => {
               if (value !== undefined) store.getState().updateContent(tab.id, value);

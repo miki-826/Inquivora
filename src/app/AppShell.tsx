@@ -7,6 +7,7 @@ import { useDeepLink } from "../features/notifications/useDeepLink";
 import { initSearchIndexListener } from "../stores/searchIndexListener";
 import { initMeetingListeners } from "../stores/useMeetingStore";
 import { useSettingsStore } from "../stores/useSettingsStore";
+import { useThemeStore } from "../stores/useThemeStore";
 
 export function AppShell() {
   const location = useLocation();
@@ -16,6 +17,23 @@ export function AppShell() {
   useEffect(() => {
     initMeetingListeners();
     initSearchIndexListener();
+    void useThemeStore.getState().init();
+
+    // 起動直後のアイドル時に重い画面チャンク（Monaco等）を裏で先読みし、
+    // 初回のナビ切替でも待たされないようにする
+    const warmup = () => {
+      void import("../features/workspace/WorkspacePage");
+      void import("../features/meetings/MeetingsPage");
+      void import("../features/calendar/CalendarPage");
+    };
+    const ric = (
+      window as Window & { requestIdleCallback?: (cb: () => void) => number }
+    ).requestIdleCallback;
+    if (ric) {
+      ric(warmup);
+    } else {
+      setTimeout(warmup, 1500);
+    }
   }, []);
 
   useEffect(() => {

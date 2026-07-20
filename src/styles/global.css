@@ -3,11 +3,14 @@
   --color-surface: #ffffff;
   --color-surface-subtle: #f8fafc;
   --color-border: #dce3ef;
+  --color-input-bg: #ffffff;
+  --color-input-border: #cdd5e4;
   --color-text: #172033;
   --color-text-muted: #667085;
   --color-primary: #2563eb;
   --color-primary-hover: #1d4ed8;
   --color-primary-soft: #eaf2ff;
+  --color-primary-ring: rgba(37, 99, 235, 0.18);
   --color-success: #16a34a;
   --color-warning: #f59e0b;
   --color-danger: #ef4444;
@@ -18,6 +21,27 @@
   --size-vertical-nav: 76px;
   --size-toolbar: 48px;
   --size-statusbar: 28px;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --color-bg: #0f141c;
+  --color-surface: #1a2130;
+  --color-surface-subtle: #222b3b;
+  --color-border: #2c3648;
+  --color-input-bg: #131a25;
+  --color-input-border: #3a465b;
+  --color-text: #e6ebf4;
+  --color-text-muted: #9aa6bd;
+  --color-primary: #4f86f7;
+  --color-primary-hover: #6a9bff;
+  --color-primary-soft: #1e2b44;
+  --color-primary-ring: rgba(79, 134, 247, 0.3);
+  --color-success: #34d399;
+  --color-warning: #fbbf24;
+  --color-danger: #f87171;
+  --color-purple: #a78bfa;
+  color-scheme: dark;
 }
 
 * {
@@ -51,6 +75,77 @@ button {
 :focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 1px;
+}
+
+/* 入力欄・選択欄の統一スタイル（細枠・角丸・フォーカスリング） */
+input[type="text"],
+input[type="password"],
+input[type="url"],
+input[type="number"],
+input[type="time"],
+input[type="date"],
+input[type="search"],
+input:not([type]),
+select,
+textarea {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 8px 10px;
+  border: 1px solid var(--color-input-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-input-bg);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  user-select: text;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+
+input[type="text"]:hover,
+input[type="password"]:hover,
+input[type="url"]:hover,
+input[type="number"]:hover,
+input[type="search"]:hover,
+select:hover,
+textarea:hover {
+  border-color: var(--color-text-muted);
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="url"]:focus,
+input[type="number"]:focus,
+input[type="time"]:focus,
+input[type="date"]:focus,
+input[type="search"]:focus,
+input:not([type]):focus,
+select:focus,
+textarea:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-ring);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-text-muted);
+  opacity: 0.8;
+}
+
+select {
+  padding-right: 30px;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23667085' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  cursor: pointer;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--color-primary);
+  cursor: pointer;
 }
 
 /* 主要CTA（会議開始・議事録生成など）の共通スタイル */
@@ -807,6 +902,37 @@ button {
   padding: 24px;
   font-size: 13px;
   color: var(--color-text-muted, #999);
+}
+
+.theme-options {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  width: fit-content;
+}
+
+.theme-option {
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.theme-option:hover {
+  color: var(--color-text);
+}
+
+.theme-option--on {
+  background: var(--color-surface);
+  color: var(--color-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
 .search-page__filters {

@@ -7,7 +7,9 @@ import {
   parseNotificationSettings,
   type NotificationSettings,
 } from "../notifications/notificationModel";
+import { useThemeStore } from "../../stores/useThemeStore";
 import { SettingsNav } from "./SettingsNav";
+import { THEME_OPTIONS } from "./themeModel";
 
 const NOTIFICATION_SETTING_KEY = "notifications";
 
@@ -165,10 +167,40 @@ function GeneralSettingsSection() {
   );
 }
 
+function AppearanceSettingsSection() {
+  const preference = useThemeStore((s) => s.preference);
+  const setPreference = useThemeStore((s) => s.setPreference);
+
+  return (
+    <section className="settings-section">
+      <h2 className="settings-section__title">外観</h2>
+      <div className="settings-field">
+        テーマ
+        <div className="theme-options">
+          {THEME_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={`theme-option${preference === option.value ? " theme-option--on" : ""}`}
+              onClick={() => setPreference(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="settings-note">
+        「OSに合わせる」を選ぶと、Windowsのライト/ダーク設定に自動で追従します。
+      </p>
+    </section>
+  );
+}
+
 export function SettingsPage() {
   return (
     <ThreePaneLayout left={<SettingsNav />}>
       <div className="settings-page">
+        <AppearanceSettingsSection />
         <NotificationSettingsSection />
         <GeneralSettingsSection />
       </div>
