@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -12,15 +12,22 @@ use crate::api::client::{
 };
 use crate::error::AppError;
 
+const MAX_API_RESPONSE_BYTES: usize = 10 * 1024 * 1024;
+const SUMMARY_CHUNK_CHARS: usize = 48_000;
+const MAX_SUMMARY_CHUNKS: usize = 12;
+
 pub fn runtime_from_profile(
     profile: &crate::database::providers::ApiProviderProfile,
     secret: Option<String>,
 ) -> ProviderRuntime {
     ProviderRuntime {
+        provider_type: profile.provider_type.clone(),
         base_url: profile.base_url.clone(),
         auth_type: profile.auth_type.clone(),
         secret,
         default_headers: profile.default_headers.clone(),
+        organization_id: profile.organization_id.clone(),
+        project_id: profile.project_id.clone(),
         timeout_ms: profile.timeout_ms.max(1000) as u64,
         capabilities: profile.capabilities.clone(),
     }
@@ -28,10 +35,13 @@ pub fn runtime_from_profile(
 
 #[derive(Debug, Clone)]
 pub struct ProviderRuntime {
+    pub provider_type: String,
     pub base_url: String,
     pub auth_type: String,
     pub secret: Option<String>,
     pub default_headers: HashMap<String, String>,
+    pub organization_id: Option<String>,
+    pub project_id: Option<String>,
     pub timeout_ms: u64,
     pub capabilities: Vec<String>,
 }
@@ -51,7 +61,28 @@ fn request_headers(profile: &ProviderRuntime) -> HashMap<String, String> {
         .as_deref()
         .map(|secret| auth_headers(&profile.auth_type, secret))
         .unwrap_or_default();
-    merge_headers(&profile.default_headers, &auth)
+    let mut headers = profile.default_headers.clone();
+    if profile.provider_type == "openai" {
+        if let Some(organization_id) = profile.organization_id.as_deref().filter(|v| !v.trim().is_empty()) {
+            headers.insert("OpenAI-Organization".to_string(), organization_id.trim().to_string());
+        }
+        if let Some(project_id) = profile.project_id.as_deref().filter(|v| !v.trim().is_empty()) {
+            headers.insert("OpenAI-Project".to_string(), project_id.trim().to_string());
+        }
+    }
+    merge_headers(&headers, &auth)
+}
+
+fn require_capability(profile: &ProviderRuntime, capability: &str) -> Result<(), AppError> {
+    if profile.capabilities.iter().any(|value| value == capability) {
+        Ok(())
+    } else {
+        Err(AppError::new(
+            "API_CAPABILITY_MISSING",
+            format!("Providerが必要な機能（{capability}）に対応していません"),
+            false,
+        ))
+    }
 }
 
 fn map_request_error(err: reqwest::Error) -> AppError {
@@ -78,7 +109,35 @@ async fn send_request(
     }
     let response = builder.send().await.map_err(map_request_error)?;
     let status = response.status().as_u16();
-    let body = response.text().await.map_err(map_request_error)?;
+    if response
+        .content_length()
+        .is_some_and(|size| size > MAX_API_RESPONSE_BYTES as u64)
+    {
+        return Err(AppError::new(
+            "API_RESPONSE_TOO_LARGE",
+            "APIの応答が上限（10MB）を超えています",
+            false,
+        ));
+    }
+    let mut response = response;
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(map_request_error)? {
+        if bytes.len().saturating_add(chunk.len()) > MAX_API_RESPONSE_BYTES {
+            return Err(AppError::new(
+                "API_RESPONSE_TOO_LARGE",
+                "APIの応答が上限（10MB）を超えています",
+                false,
+            ));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    let body = String::from_utf8(bytes).map_err(|_| {
+        AppError::new(
+            "API_INVALID_RESPONSE",
+            "APIからUTF-8ではない応答が返されました",
+            false,
+        )
+    })?;
     Ok((status, body))
 }
 
@@ -88,6 +147,7 @@ fn status_error(status: u16, context: &str) -> AppError {
 }
 
 pub async fn list_models(profile: &ProviderRuntime) -> Result<Vec<String>, AppError> {
+    require_capability(profile, "models.list")?;
     let client = http_client(profile.timeout_ms)?;
     let url = format!("{}/models", profile.base_url);
     let (status, body) = send_request(profile, client.get(url)).await?;
@@ -185,6 +245,7 @@ pub async fn transcribe(
     profile: &ProviderRuntime,
     request: TranscribeRequest,
 ) -> Result<TranscriptionResult, AppError> {
+    require_capability(profile, "transcription.batch")?;
     let bytes = tokio::fs::read(&request.audio_path).await.map_err(|e| {
         AppError::new(
             "TRANSCRIPTION_FAILED",
@@ -254,7 +315,7 @@ async fn post_chat(
 }
 
 /// §10.10 議事録生成。JSONスキーマ不一致の場合は1回だけ修復リクエストを行う。
-pub async fn generate_summary(
+async fn generate_summary_once(
     profile: &ProviderRuntime,
     request: SummaryRequest,
 ) -> Result<MeetingAiOutput, AppError> {
@@ -269,6 +330,109 @@ pub async fn generate_summary(
             parse_meeting_ai_output(&retried)
         }
     }
+}
+
+fn split_summary_content(content: &str) -> Result<Vec<String>, AppError> {
+    let chars = content.chars().count();
+    if chars <= SUMMARY_CHUNK_CHARS {
+        return Ok(vec![content.to_string()]);
+    }
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+    for line in content.split_inclusive('\n') {
+        let mut rest = line;
+        while !rest.is_empty() {
+            let room = SUMMARY_CHUNK_CHARS.saturating_sub(current.chars().count());
+            if room == 0 {
+                chunks.push(std::mem::take(&mut current));
+                continue;
+            }
+            let split_byte = rest
+                .char_indices()
+                .nth(room)
+                .map(|(index, _)| index)
+                .unwrap_or(rest.len());
+            current.push_str(&rest[..split_byte]);
+            rest = &rest[split_byte..];
+            if current.chars().count() >= SUMMARY_CHUNK_CHARS {
+                chunks.push(std::mem::take(&mut current));
+            }
+        }
+    }
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+    if chunks.len() > MAX_SUMMARY_CHUNKS {
+        return Err(AppError::new(
+            "MEETING_TOO_LONG",
+            "会議内容が長すぎます。要約対象を分けてください（1回につき約58万文字まで）",
+            false,
+        ));
+    }
+    Ok(chunks)
+}
+
+/// 長い会議は安全な文字数で分割して要約し、重複を除きながら結果を統合する。
+pub async fn generate_summary(
+    profile: &ProviderRuntime,
+    request: SummaryRequest,
+) -> Result<MeetingAiOutput, AppError> {
+    require_capability(profile, "text.structured_output")?;
+    let chunks = split_summary_content(&request.user_content)?;
+    let total = chunks.len();
+    let mut outputs = Vec::with_capacity(total);
+    for (index, chunk) in chunks.into_iter().enumerate() {
+        let user_content = if total == 1 {
+            chunk
+        } else {
+            format!(
+                "# 分割要約\n全{total}分割のうち{}番目です。この部分だけから根拠のある項目を抽出してください。\n\n{chunk}",
+                index + 1
+            )
+        };
+        outputs.push(
+            generate_summary_once(
+                profile,
+                SummaryRequest {
+                    model: request.model.clone(),
+                    system_prompt: request.system_prompt.clone(),
+                    user_content,
+                },
+            )
+            .await?,
+        );
+    }
+    if outputs.len() == 1 {
+        return Ok(outputs.remove(0));
+    }
+
+    let mut merged = MeetingAiOutput {
+        title: outputs.iter().find_map(|item| (!item.title.trim().is_empty()).then(|| item.title.clone())).unwrap_or_default(),
+        summary: outputs
+            .iter()
+            .enumerate()
+            .map(|(index, item)| format!("【{}】{}", index + 1, item.summary.trim()))
+            .collect::<Vec<_>>()
+            .join("\n\n"),
+        decisions: Vec::new(),
+        task_candidates: Vec::new(),
+        open_questions: Vec::new(),
+    };
+    let mut decisions = HashSet::new();
+    let mut tasks = HashSet::new();
+    let mut questions = HashSet::new();
+    for output in outputs {
+        merged.decisions.extend(output.decisions.into_iter().filter(|item| {
+            decisions.insert(item.text.trim().to_lowercase())
+        }));
+        merged.task_candidates.extend(output.task_candidates.into_iter().filter(|item| {
+            tasks.insert(item.title.trim().to_lowercase())
+        }));
+        merged.open_questions.extend(output.open_questions.into_iter().filter(|item| {
+            questions.insert(item.text.trim().to_lowercase())
+        }));
+    }
+    Ok(merged)
 }
 
 #[cfg(test)]
@@ -332,14 +496,19 @@ mod tests {
 
     fn runtime_profile(base_url: &str, secret: Option<&str>) -> ProviderRuntime {
         ProviderRuntime {
+            provider_type: "openai".to_string(),
             base_url: base_url.to_string(),
             auth_type: "bearer".to_string(),
             secret: secret.map(String::from),
             default_headers: HashMap::new(),
+            organization_id: None,
+            project_id: None,
             timeout_ms: 5000,
             capabilities: vec![
                 "transcription.batch".to_string(),
                 "models.list".to_string(),
+                "text.generate".to_string(),
+                "text.structured_output".to_string(),
             ],
         }
     }
@@ -454,5 +623,32 @@ mod tests {
         assert!(body.contains("whisper-1"));
         assert!(body.contains("chunk0.wav"));
         assert!(body.contains("RIFFfakewav"));
+    }
+
+    #[test]
+    fn 長い日本語入力は文字境界を壊さず分割する() {
+        let source = "会議メモです。".repeat(10_000);
+        let chunks = split_summary_content(&source).unwrap();
+        assert!(chunks.len() > 1);
+        assert!(chunks.iter().all(|chunk| chunk.chars().count() <= SUMMARY_CHUNK_CHARS));
+        assert_eq!(chunks.concat(), source);
+    }
+
+    #[test]
+    fn openai組織とprojectは専用headerへ反映する() {
+        let mut profile = runtime_profile("https://api.openai.com/v1", Some("sk"));
+        profile.organization_id = Some("org-test".to_string());
+        profile.project_id = Some("proj-test".to_string());
+        let headers = request_headers(&profile);
+        assert_eq!(headers.get("OpenAI-Organization").map(String::as_str), Some("org-test"));
+        assert_eq!(headers.get("OpenAI-Project").map(String::as_str), Some("proj-test"));
+    }
+
+    #[tokio::test]
+    async fn capability不足なら通信前に拒否する() {
+        let mut profile = runtime_profile("http://127.0.0.1:1/v1", Some("sk"));
+        profile.capabilities.clear();
+        let err = list_models(&profile).await.unwrap_err();
+        assert_eq!(err.code, "API_CAPABILITY_MISSING");
     }
 }

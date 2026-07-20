@@ -11,7 +11,7 @@ import {
 } from "./whisperModel";
 import type { ConnectionTestResult, FeatureBinding } from "../../services/providers";
 import {
-  FEATURE_KEYS,
+  ACTIVE_FEATURE_KEYS,
   capabilitiesForType,
   featureLabel,
   validateBaseUrl,
@@ -401,6 +401,24 @@ function BindingRow({
       .catch((err) => setError(messageOf(err)));
   };
 
+  const saveFallback = (providerProfileId: string | null, modelId: string | null) => {
+    const next: FeatureBinding = {
+      featureKey,
+      providerProfileId: binding?.providerProfileId ?? null,
+      modelId: binding?.modelId ?? null,
+      fallbackProviderProfileId: providerProfileId,
+      fallbackModelId: modelId,
+      updatedAt: new Date().toISOString(),
+    };
+    setBinding(next);
+    void api.setFeatureBinding(featureKey, {
+      providerProfileId: next.providerProfileId,
+      modelId: next.modelId,
+      fallbackProviderProfileId: providerProfileId,
+      fallbackModelId: modelId,
+    }).catch((err) => setError(messageOf(err)));
+  };
+
   const fetchModels = async () => {
     if (!binding?.providerProfileId) {
       return;
@@ -449,6 +467,24 @@ function BindingRow({
       <button type="button" disabled={!binding?.providerProfileId} onClick={() => void fetchModels()}>
         取得
       </button>
+      <span className="binding-row__fallback-label">予備</span>
+      <select
+        aria-label={`${featureLabel(featureKey)}の予備Provider`}
+        value={binding?.fallbackProviderProfileId ?? ""}
+        onChange={(e) => saveFallback(e.target.value || null, binding?.fallbackModelId ?? null)}
+      >
+        <option value="">未設定</option>
+        {providers.filter((p) => p.enabled && p.id !== binding?.providerProfileId).map((p) => (
+          <option key={p.id} value={p.id}>{p.displayName}</option>
+        ))}
+      </select>
+      <input
+        type="text"
+        aria-label={`${featureLabel(featureKey)}の予備モデルID`}
+        placeholder="予備モデルID"
+        value={binding?.fallbackModelId ?? ""}
+        onChange={(e) => saveFallback(binding?.fallbackProviderProfileId ?? null, e.target.value || null)}
+      />
       {error && (
         <span className="settings-actions__error" role="alert">
           {error}
@@ -705,7 +741,7 @@ export function AiSettingsPage() {
           <p className="settings-note">
             モデル一覧の取得に失敗しても、モデルIDを直接入力すれば使用できます。
           </p>
-          {FEATURE_KEYS.map((key) => (
+          {ACTIVE_FEATURE_KEYS.map((key) => (
             <BindingRow key={key} featureKey={key} providers={providers} />
           ))}
         </section>

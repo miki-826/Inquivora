@@ -1,11 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Task, TaskFilter, TaskPriority, TaskStatus } from "../features/tasks/taskModel";
+import type { Task, TaskColor, TaskFilter, TaskPriority, TaskStatus } from "../features/tasks/taskModel";
 
 export type TaskInput = {
   title: string;
   description?: string | null;
   dueAtUtc?: string | null;
   priority?: TaskPriority;
+  color?: TaskColor;
   status?: TaskStatus;
   assignee?: string | null;
   projectName?: string | null;
@@ -19,6 +20,7 @@ export type TaskPatch = {
   dueAtUtc?: string | null;
   timezone?: string;
   priority?: TaskPriority;
+  color?: TaskColor;
   status?: TaskStatus;
   assignee?: string | null;
   projectName?: string | null;

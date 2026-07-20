@@ -1,7 +1,7 @@
 import { DiffEditor, Editor } from "@monaco-editor/react";
 import { listen } from "@tauri-apps/api/event";
 import { Eye, EyeOff, Pin, PinOff, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PanePlaceholder } from "../../components/common/PanePlaceholder";
 import { useEditorStore } from "../../stores/useEditorStore";
 import { useWorkspaceStore } from "../../stores/useWorkspaceStore";
@@ -9,6 +9,7 @@ import type { EditorTab } from "./editorModel";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { MediaView } from "./MediaView";
 import "./monacoSetup";
+import { SelectionTaskDialog, type SelectionTaskDraft } from "./SelectionTaskDialog";
 
 /// ルートの data-theme を監視し、Monacoのテーマ（vs / vs-dark）を返す。
 function useEditorTheme(): "vs" | "vs-dark" {
@@ -204,8 +205,13 @@ function ActivePane() {
   const previewVisible = useEditorStore((s) => s.previewVisible);
   const store = useEditorStore;
   const editorTheme = useEditorTheme();
+  const [selectionTask, setSelectionTask] = useState<SelectionTaskDraft | null>(null);
+  const activePathRef = useRef("");
 
   const tab = tabs.find((t) => t.id === activeTabId);
+  useEffect(() => {
+    activePathRef.current = tab?.path ?? "";
+  }, [tab?.path]);
   if (!tab) {
     return (
       <PanePlaceholder
@@ -241,6 +247,34 @@ function ActivePane() {
               editor.onDidChangeCursorPosition((e) => {
                 store.getState().setCursor(tab.id, e.position.lineNumber, e.position.column);
               });
+              const action = editor.addAction({
+                id: "inquivora.selection.createTask",
+                label: "選択範囲をタスクにする",
+                contextMenuGroupId: "navigation",
+                contextMenuOrder: 1.5,
+                precondition: "editorHasSelection",
+                run: (currentEditor) => {
+                  const selection = currentEditor.getSelection();
+                  const text = selection
+                    ? currentEditor.getModel()?.getValueInRange(selection).trim() ?? ""
+                    : "";
+                  if (text) setSelectionTask({ text, filePath: activePathRef.current });
+                },
+              });
+              const domNode = editor.getDomNode();
+              const closeFindOnClick = (event: Event) => {
+                const target = event.target as HTMLElement | null;
+                if (!target?.closest(".find-widget > .codicon-widget-close")) return;
+                event.preventDefault();
+                event.stopPropagation();
+                editor.trigger("mouse", "closeFindWidget", null);
+                editor.focus();
+              };
+              domNode?.addEventListener("click", closeFindOnClick, true);
+              editor.onDidDispose(() => {
+                action.dispose();
+                domNode?.removeEventListener("click", closeFindOnClick, true);
+              });
             }}
             options={{
               readOnly: readMode !== "normal",
@@ -250,11 +284,21 @@ function ActivePane() {
               renderWhitespace: "none",
               fontSize: 14,
               mouseWheelZoom: true,
+              scrollbar: {
+                vertical: "hidden",
+                horizontal: "hidden",
+                verticalScrollbarSize: 0,
+                horizontalScrollbarSize: 0,
+                useShadows: false,
+              },
             }}
           />
         </div>
         {showPreview && <MarkdownPreview content={content} />}
       </div>
+      {selectionTask && (
+        <SelectionTaskDialog draft={selectionTask} onClose={() => setSelectionTask(null)} />
+      )}
     </div>
   );
 }

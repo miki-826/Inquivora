@@ -1,6 +1,7 @@
 import { formatInTimeZone } from "date-fns-tz";
 import {
   TOKYO_TZ,
+  TASK_COLOR_VALUES,
   isDateOnlyDue,
   tokyoDateString,
   type Task,
@@ -30,6 +31,9 @@ export type CalendarInput = {
   end?: string;
   allDay: boolean;
   classNames: string[];
+  backgroundColor?: string;
+  borderColor?: string;
+  textColor?: string;
   extendedProps: {
     kind: "event" | "task";
     sourceId: string;
@@ -70,6 +74,9 @@ export function taskToCalendarInput(task: Task): CalendarInput | null {
     start: allDay ? tokyoDateString(task.dueAtUtc) : task.dueAtUtc,
     allDay,
     classNames: completed ? ["cal-task", "cal-task--completed"] : ["cal-task"],
+    backgroundColor: TASK_COLOR_VALUES[task.color],
+    borderColor: TASK_COLOR_VALUES[task.color],
+    textColor: "#ffffff",
     extendedProps: { kind: "task", sourceId: task.id, ...(completed ? { completed } : {}) },
   };
 }

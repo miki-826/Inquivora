@@ -49,7 +49,7 @@ struct WhisperProc {
 }
 
 #[derive(Default)]
-pub struct WhisperRuntime(pub tokio::sync::Mutex<Option<WhisperProc>>);
+pub struct WhisperRuntime(tokio::sync::Mutex<Option<WhisperProc>>);
 
 impl WhisperRuntime {
     /// アイドル時にSidecarを終了させてモデル分のメモリを解放する。

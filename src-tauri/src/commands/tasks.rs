@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use tauri::State;
 
-use crate::database::tasks::{self, Task, TaskFilter, TaskInput, TaskPatch, TaskPriority};
+use crate::database::tasks::{self, Task, TaskColor, TaskFilter, TaskInput, TaskPatch, TaskPriority};
 use crate::database::{meeting_ai, meetings, settings};
 use crate::error::AppError;
 use crate::notifications::schedule::parse_settings;
@@ -140,6 +140,7 @@ pub fn task_accept_candidate(
             priority: patch
                 .priority
                 .unwrap_or_else(|| priority_from_str(&candidate.priority)),
+            color: TaskColor::Blue,
             status: None,
             assignee: patch.assignee.or(candidate.assignee),
             project_name: None,

@@ -6,6 +6,8 @@ import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
 import { searchGlobal } from "../../services/search";
 import { useEditorStore } from "../../stores/useEditorStore";
 import { useMeetingStore } from "../../stores/useMeetingStore";
+import { useTaskStore } from "../../stores/useTaskStore";
+import { useCalendarStore } from "../../stores/useCalendarStore";
 import {
   ENTITY_TYPES,
   entityTypeLabel,
@@ -25,6 +27,8 @@ export function SearchPage() {
   const navigate = useNavigate();
   const openPath = useEditorStore((s) => s.openPath);
   const selectMeeting = useMeetingStore((s) => s.selectMeeting);
+  const selectTask = useTaskStore((s) => s.select);
+  const focusEvent = useCalendarStore((s) => s.setFocusEventId);
 
   const [query, setQuery] = useState("");
   const [selectedTypes, setSelectedTypes] = useState<EntityType[]>([]);
@@ -97,8 +101,10 @@ export function SearchPage() {
         await selectMeeting(result.entityId);
         navigate("/meetings");
       } else if (result.entityType === "task") {
+        selectTask(result.entityId);
         navigate("/tasks");
       } else if (result.entityType === "event") {
+        focusEvent(result.entityId);
         navigate("/calendar");
       }
     } catch (err) {

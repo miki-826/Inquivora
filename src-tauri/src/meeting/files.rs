@@ -5,6 +5,24 @@ use crate::meeting::markdown;
 use crate::workspace::encoding::{FileEncoding, LineEnding};
 use crate::workspace::ops::{read_text_file, write_text_atomic};
 
+const MAX_USER_NOTES_CHARS: usize = 50_000;
+
+/// 会議マーカーの外側に利用者が書いた本文だけをAI入力用メモとして読む。
+/// 自動生成した文字起こし・AI要約はDB側の入力と重複するため除外する。
+pub fn read_user_notes(path: &Path, meeting_id: &str) -> Result<String, AppError> {
+    let content = read_text_file(path)?.content;
+    let start_marker = markdown::start_marker(meeting_id);
+    let end_marker = markdown::end_marker(meeting_id);
+    let notes = match (content.find(&start_marker), content.find(&end_marker)) {
+        (Some(start), Some(end)) if start < end => {
+            let after = end + end_marker.len();
+            format!("{}\n{}", &content[..start], &content[after..])
+        }
+        _ => content,
+    };
+    Ok(notes.chars().take(MAX_USER_NOTES_CHARS).collect())
+}
+
 /// 会議開始時に対象ファイルへマーカーブロックを準備する（§9.3）。
 /// ファイルがなければタイトル見出し付きで新規作成し、あれば末尾へ追記する。
 pub fn ensure_marker_block(path: &Path, meeting_id: &str, title: &str) -> Result<(), AppError> {
@@ -116,5 +134,24 @@ mod tests {
         assert_eq!(content.matches("## AI要約").count(), 1);
         assert!(content.contains("新要約"));
         assert!(!content.contains("旧要約"));
+    }
+
+    #[test]
+    fn ai入力用メモは会議マーカー外だけを返す() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("meeting.md");
+        std::fs::write(
+            &path,
+            format!(
+                "# 利用者メモ\n\n重要事項\n\n{}\n\n## 文字起こし\n\n自動本文\n\n{}\n\n追記メモ\n",
+                markdown::start_marker("m-6"),
+                markdown::end_marker("m-6")
+            ),
+        )
+        .unwrap();
+        let notes = read_user_notes(&path, "m-6").unwrap();
+        assert!(notes.contains("重要事項"));
+        assert!(notes.contains("追記メモ"));
+        assert!(!notes.contains("自動本文"));
     }
 }

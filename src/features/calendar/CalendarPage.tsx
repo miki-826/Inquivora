@@ -1,7 +1,7 @@
 import type { DateSelectArg, EventApi, EventClickArg } from "@fullcalendar/core";
 import jaLocale from "@fullcalendar/core/locales/ja";
 import dayGridPlugin from "@fullcalendar/daygrid";
-import interactionPlugin from "@fullcalendar/interaction";
+import interactionPlugin, { Draggable, type EventReceiveArg } from "@fullcalendar/interaction";
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
@@ -11,8 +11,10 @@ import { getEvent, type EventPatch } from "../../services/events";
 import { updateTask } from "../../services/tasks";
 import { useCalendarStore } from "../../stores/useCalendarStore";
 import { TOKYO_TZ } from "../tasks/taskModel";
+import { TASK_COLOR_VALUES, type Task } from "../tasks/taskModel";
 import { buildCalendarInputs, shiftDateString } from "./calendarModel";
 import { EventPanel, type CalendarSelection, type EventDraft } from "./EventPanel";
+import "./calendarEnhancements.css";
 
 function calStrToUtc(value: string, allDay: boolean): string {
   if (allDay) {
@@ -47,6 +49,60 @@ function draftFromSelect(info: DateSelectArg): EventDraft {
 }
 
 type EventChangeArg = { event: EventApi; revert: () => void };
+
+function UnscheduledTasks({ tasks }: { tasks: Task[] }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const unscheduled = tasks.filter(
+    (task) => !task.dueAtUtc && task.status !== "completed" && task.status !== "cancelled",
+  );
+
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element) return;
+    const draggable = new Draggable(element, {
+      itemSelector: ".calendar-unscheduled__item",
+      eventData: (item) => {
+        const id = item.dataset.taskId ?? "";
+        const color = item.dataset.taskColor as Task["color"];
+        return {
+          id: `task:${id}`,
+          title: item.dataset.taskTitle ?? "タスク",
+          backgroundColor: TASK_COLOR_VALUES[color] ?? TASK_COLOR_VALUES.blue,
+          borderColor: TASK_COLOR_VALUES[color] ?? TASK_COLOR_VALUES.blue,
+          textColor: "#ffffff",
+          extendedProps: { kind: "task", sourceId: id },
+        };
+      },
+    });
+    return () => draggable.destroy();
+  }, []);
+
+  return (
+    <div className="calendar-unscheduled" ref={containerRef}>
+      <h2 className="pane-title">未予定タスク</h2>
+      <p className="calendar-unscheduled__hint">カレンダーへドラッグして期日を設定</p>
+      {unscheduled.length === 0 ? (
+        <p className="calendar-unscheduled__empty">未予定のタスクはありません</p>
+      ) : (
+        <div className="calendar-unscheduled__list">
+          {unscheduled.map((task) => (
+            <div
+              key={task.id}
+              className="calendar-unscheduled__item"
+              data-task-id={task.id}
+              data-task-title={task.title}
+              data-task-color={task.color}
+              style={{ borderLeftColor: TASK_COLOR_VALUES[task.color] }}
+              tabIndex={0}
+            >
+              {task.title}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function CalendarPage() {
   const events = useCalendarStore((s) => s.events);
@@ -115,8 +171,30 @@ export function CalendarPage() {
     setSelection({ type: kind, id: sourceId });
   };
 
+  const handleEventReceive = async (info: EventReceiveArg) => {
+    const { kind, sourceId } = info.event.extendedProps as {
+      kind?: "event" | "task";
+      sourceId?: string;
+    };
+    if (kind !== "task" || !sourceId || !info.event.startStr) {
+      info.revert();
+      return;
+    }
+    try {
+      await updateTask(sourceId, {
+        dueAtUtc: calStrToUtc(info.event.startStr, info.event.allDay),
+      });
+      await reload();
+    } catch {
+      info.revert();
+    }
+  };
+
   return (
-    <ThreePaneLayout right={<EventPanel selection={selection} onClose={() => setSelection(null)} />}>
+    <ThreePaneLayout
+      left={<UnscheduledTasks tasks={tasks} />}
+      right={<EventPanel selection={selection} onClose={() => setSelection(null)} />}
+    >
       <div className="calendar-page">
         {error && (
           <p className="calendar-page__error" role="alert">
@@ -136,6 +214,7 @@ export function CalendarPage() {
           height="100%"
           selectable
           editable
+          droppable
           dayMaxEvents
           nowIndicator
           events={buildCalendarInputs(events, tasks, true)}
@@ -146,6 +225,7 @@ export function CalendarPage() {
           eventClick={handleEventClick}
           eventDrop={(info) => void applyEventChange(info)}
           eventResize={(info) => void applyEventChange(info)}
+          eventReceive={(info) => void handleEventReceive(info)}
         />
       </div>
     </ThreePaneLayout>

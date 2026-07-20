@@ -16,6 +16,13 @@ import { useWorkspaceStore } from "./useWorkspaceStore";
 const AUTOSAVE_DEBOUNCE_MS = 800;
 const OWN_SAVE_SUPPRESS_MS = 2000;
 const TABS_PERSIST_DEBOUNCE_MS = 500;
+const RECOVERY_PREFIX = "inquivora:recovery:";
+
+type RecoveryDraft = {
+  path: string;
+  content: string;
+  savedAt: string;
+};
 
 type RecentTabRecord = {
   path: string;
@@ -94,6 +101,43 @@ function suppressOwnChange(path: string) {
 function isSuppressed(path: string): boolean {
   const until = suppressedPaths.get(path.toLowerCase());
   return until !== undefined && Date.now() < until;
+}
+
+function recoveryKey(path: string): string {
+  return `${RECOVERY_PREFIX}${encodeURIComponent(path.toLowerCase())}`;
+}
+
+function putRecoveryDraft(path: string, content: string): boolean {
+  try {
+    const draft: RecoveryDraft = { path, content, savedAt: new Date().toISOString() };
+    localStorage.setItem(recoveryKey(path), JSON.stringify(draft));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function takeRecoveryDraft(path: string): RecoveryDraft | null {
+  try {
+    const value = localStorage.getItem(recoveryKey(path));
+    if (!value) return null;
+    const parsed = JSON.parse(value) as Partial<RecoveryDraft>;
+    if (parsed.path !== path || typeof parsed.content !== "string" || typeof parsed.savedAt !== "string") {
+      localStorage.removeItem(recoveryKey(path));
+      return null;
+    }
+    return parsed as RecoveryDraft;
+  } catch {
+    return null;
+  }
+}
+
+function clearRecoveryDraft(path: string) {
+  try {
+    localStorage.removeItem(recoveryKey(path));
+  } catch {
+    // WebViewの保存領域が利用できない場合も通常保存は継続する。
+  }
 }
 
 export const useEditorStore = create<EditorStore>((set, get) => {
@@ -203,6 +247,22 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         useWorkspaceStore.setState({ error: messageOf(error) });
         return;
       }
+      const recovery = takeRecoveryDraft(absolutePath);
+      if (recovery) {
+        const diskContent = get().contents[tab.id];
+        if (recovery.content !== diskContent) {
+          set((state) => ({
+            contents: { ...state.contents, [tab.id]: recovery.content },
+            saveErrors: {
+              ...state.saveErrors,
+              [tab.id]: `前回保存できなかった内容を復旧しました（${new Date(recovery.savedAt).toLocaleString("ja-JP")}）`,
+            },
+          }));
+          tab = { ...tab, isDirty: true };
+        } else {
+          clearRecoveryDraft(absolutePath);
+        }
+      }
       set((state) => {
         const next = addOrActivateTab(state.tabs, state.activeTabId, tab);
         return { tabs: next.tabs, activeTabId: next.activeTabId };
@@ -300,6 +360,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         suppressOwnChange(tab.path);
         await ws.writeFileAtomic(tab.path, content, tab.encoding, tab.lineEnding);
         suppressOwnChange(tab.path);
+        clearRecoveryDraft(tab.path);
         patchTab(tabId, { isDirty: false });
         set((state) => {
           const saveErrors = { ...state.saveErrors };
@@ -309,8 +370,12 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         return true;
       } catch (error) {
         console.error("保存に失敗", error);
+        const recovered = putRecoveryDraft(tab.path, content);
         set((state) => ({
-          saveErrors: { ...state.saveErrors, [tabId]: messageOf(error) },
+          saveErrors: {
+            ...state.saveErrors,
+            [tabId]: `${messageOf(error)}${recovered ? "（復旧領域へ退避済み）" : "（復旧領域への退避にも失敗）"}`,
+          },
         }));
         return false;
       }

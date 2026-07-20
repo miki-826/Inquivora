@@ -20,22 +20,69 @@ fn summary_not_configured() -> AppError {
 pub fn resolve_summary_provider(
     conn: &Connection,
 ) -> Result<(ApiProviderProfile, String), AppError> {
+    resolve_summary_providers(conn).map(|mut providers| providers.remove(0))
+}
+
+/// Primary、Fallbackの順で実行可能な要約Providerを返す。
+pub fn resolve_summary_providers(
+    conn: &Connection,
+) -> Result<Vec<(ApiProviderProfile, String)>, AppError> {
     let binding = providers::get_binding(conn, MEETING_SUMMARY_FEATURE)?;
-    let (provider_id, model) = binding
-        .and_then(|b| match (b.provider_profile_id, b.model_id) {
-            (Some(id), Some(model)) => Some((id, model)),
-            _ => None,
+    let candidates = binding
+        .as_ref()
+        .into_iter()
+        .flat_map(|binding| {
+            [
+                (
+                    binding.provider_profile_id.as_ref(),
+                    binding.model_id.as_ref(),
+                ),
+                (
+                    binding.fallback_provider_profile_id.as_ref(),
+                    binding.fallback_model_id.as_ref(),
+                ),
+            ]
         })
-        .ok_or_else(summary_not_configured)?;
-    let profile = providers::get_provider(conn, &provider_id)?;
-    if !profile.enabled {
-        return Err(AppError::new(
-            "API_PROVIDER_DISABLED",
-            "議事録生成のProviderが無効化されています。設定画面で有効化してください",
-            false,
-        ));
+        .filter_map(|(provider_id, model)| Some((provider_id?.clone(), model?.clone())))
+        .collect::<Vec<_>>();
+    if candidates.is_empty() {
+        return Err(summary_not_configured());
     }
-    Ok((profile, model))
+    let mut last_error = None;
+    let mut resolved = Vec::new();
+    for (provider_id, model) in candidates {
+        match providers::get_provider(conn, &provider_id) {
+            Ok(profile)
+                if profile.enabled
+                    && profile
+                        .capabilities
+                        .iter()
+                        .any(|capability| capability == "text.structured_output") =>
+            {
+                resolved.push((profile, model));
+            }
+            Ok(profile) if !profile.enabled => {
+                last_error = Some(AppError::new(
+                    "API_PROVIDER_DISABLED",
+                    "議事録生成のProviderが無効化されています",
+                    false,
+                ));
+            }
+            Ok(_) => {
+                last_error = Some(AppError::new(
+                    "API_CAPABILITY_MISSING",
+                    "議事録生成Providerにtext.structured_output capabilityがありません",
+                    false,
+                ));
+            }
+            Err(err) => last_error = Some(err),
+        }
+    }
+    if resolved.is_empty() {
+        Err(last_error.unwrap_or_else(summary_not_configured))
+    } else {
+        Ok(resolved)
+    }
 }
 
 /// 議事録生成が可能か（API設定済みか）を返す。UIのボタン活性判定に使う。
@@ -184,7 +231,7 @@ mod tests {
         providers::create_provider(
             conn,
             ProviderInput {
-                display_name: "OpenAI".to_string(),
+                display_name: format!("OpenAI {}", uuid::Uuid::new_v4()),
                 provider_type: "openai".to_string(),
                 base_url: "https://api.openai.com/v1".to_string(),
                 auth_type: "bearer".to_string(),
@@ -192,7 +239,7 @@ mod tests {
                 project_id: None,
                 default_headers: Default::default(),
                 timeout_ms: 60000,
-                capabilities: vec!["meeting.summary".to_string()],
+                capabilities: vec!["text.structured_output".to_string()],
             },
         )
         .unwrap()
@@ -218,6 +265,28 @@ mod tests {
         let err = resolve_summary_provider(&conn).unwrap_err();
         assert_eq!(err.code, "SUMMARY_NOT_CONFIGURED");
         assert!(!summary_available(&conn).unwrap());
+    }
+
+    #[test]
+    fn primary無効時はfallback_providerを使う() {
+        let (_dir, conn) = temp_conn();
+        let primary = provider(&conn);
+        let fallback = provider(&conn);
+        providers::set_provider_enabled(&conn, &primary, false).unwrap();
+        providers::set_binding(
+            &conn,
+            MEETING_SUMMARY_FEATURE,
+            BindingInput {
+                provider_profile_id: Some(primary),
+                model_id: Some("primary-model".to_string()),
+                fallback_provider_profile_id: Some(fallback.clone()),
+                fallback_model_id: Some("fallback-model".to_string()),
+            },
+        )
+        .unwrap();
+        let (resolved, model) = resolve_summary_provider(&conn).unwrap();
+        assert_eq!(resolved.id, fallback);
+        assert_eq!(model, "fallback-model");
     }
 
     #[test]

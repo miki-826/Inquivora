@@ -22,15 +22,16 @@ struct ChunkInfo {
     end_ms: i64,
 }
 
+#[derive(Clone)]
 enum TranscriptionBackend {
-    Api { profile: ApiProviderProfile, model: String },
-    Local { model_path: std::path::PathBuf, model_name: String },
+    Api { profile: Box<ApiProviderProfile>, model: String },
+    Local { model_path: std::path::PathBuf },
 }
 
 struct JobContext {
     job_id: String,
     meeting: meetings::Meeting,
-    backend: TranscriptionBackend,
+    backends: Vec<TranscriptionBackend>,
     chunk: ChunkInfo,
 }
 
@@ -67,43 +68,59 @@ async fn process_next(app: &AppHandle) -> Result<bool, AppError> {
     let Some(context) = prepare_job(app)? else {
         return Ok(false);
     };
-    let result = match &context.backend {
-        TranscriptionBackend::Api { profile, model } => {
-            let secret = credentials::get_secret(app, &profile.id).await?;
-            if secret.is_none() {
-                return finish_with_error(
-                    app,
-                    &context,
-                    AppError::new(
+    let mut last_error = None;
+    for backend in &context.backends {
+        let result = match backend {
+            TranscriptionBackend::Api { profile, model } => {
+                let secret = credentials::get_secret(app, &profile.id).await?;
+                if secret.is_none() {
+                    Err(AppError::new(
                         "API_AUTH_FAILED",
                         "APIキーが設定されていません。設定画面で登録してください",
                         false,
-                    ),
-                )
-                .map(|_| true);
+                    ))
+                } else {
+                    let runtime = http::runtime_from_profile(profile, secret);
+                    http::transcribe(
+                        &runtime,
+                        TranscribeRequest {
+                            audio_path: context.chunk.path.clone(),
+                            model: model.clone(),
+                            language: "ja".to_string(),
+                            prompt: None,
+                        },
+                    )
+                    .await
+                    .map(|transcription| transcription.text)
+                }
             }
-            let runtime = http::runtime_from_profile(profile, secret);
-            http::transcribe(
-                &runtime,
-                TranscribeRequest {
-                    audio_path: context.chunk.path.clone(),
-                    model: model.clone(),
-                    language: "ja".to_string(),
-                    prompt: None,
-                },
-            )
-            .await
-            .map(|transcription| transcription.text)
-        }
-        TranscriptionBackend::Local { model_path, .. } => {
-            whisper::sidecar::transcribe(app, model_path, std::path::Path::new(&context.chunk.path))
+            TranscriptionBackend::Local { model_path } => {
+                whisper::sidecar::transcribe(
+                    app,
+                    model_path,
+                    std::path::Path::new(&context.chunk.path),
+                )
                 .await
+            }
+        };
+        match result {
+            Ok(text) => {
+                finish_with_success(app, &context, backend, text)?;
+                return Ok(true);
+            }
+            Err(err) => {
+                record_backend_usage(app, &context, backend, "error", Some(err.code.clone()))?;
+                last_error = Some(err);
+            }
         }
-    };
-    match result {
-        Ok(text) => finish_with_success(app, &context, text)?,
-        Err(err) => finish_with_error(app, &context, err)?,
     }
+    finish_with_error(
+        app,
+        &context,
+        last_error.unwrap_or_else(|| {
+            AppError::new("TRANSCRIPTION_FAILED", "文字起こし経路を利用できません", false)
+        }),
+    )?;
     Ok(true)
 }
 
@@ -135,29 +152,37 @@ fn prepare_job(app: &AppHandle) -> Result<Option<JobContext>, AppError> {
         return Ok(None);
     };
     let local_model = local_model_ready(app, &conn)?;
-    let route = match whisper::route::resolve_transcription_route(&conn, local_model.is_some()) {
-        Ok(route) => route,
+    let routes = match whisper::route::resolve_transcription_routes(&conn, local_model.is_some()) {
+        Ok(routes) => routes,
         Err(err) => {
             jobs::fail_job(&conn, &job.id, &err.code, false)?;
             emit_transcription_error(app, &meeting_id, &err.code, &err.message);
             return Ok(None);
         }
     };
-    let backend = match route {
-        whisper::route::TranscriptionRoute::Api { provider_id, model } => {
-            let profile = providers::get_provider(&conn, &provider_id)?;
-            TranscriptionBackend::Api { profile, model }
-        }
-        whisper::route::TranscriptionRoute::Local => {
-            let (model_path, model_name) = local_model.expect("ローカル経路はモデル確認済み");
-            TranscriptionBackend::Local { model_path, model_name }
-        }
-    };
+    let backends = routes
+        .into_iter()
+        .map(|route| match route {
+            whisper::route::TranscriptionRoute::Api { provider_id, model } => {
+                let profile = providers::get_provider(&conn, &provider_id)?;
+                Ok(TranscriptionBackend::Api {
+                    profile: Box::new(profile),
+                    model,
+                })
+            }
+            whisper::route::TranscriptionRoute::Local => {
+                let (model_path, _) = local_model
+                    .clone()
+                    .expect("ローカル経路はモデル確認済み");
+                Ok(TranscriptionBackend::Local { model_path })
+            }
+        })
+        .collect::<Result<Vec<_>, AppError>>()?;
     jobs::mark_job_processing(&conn, &job.id)?;
     Ok(Some(JobContext {
         job_id: job.id,
         meeting,
-        backend,
+        backends,
         chunk,
     }))
 }
@@ -186,10 +211,11 @@ fn parse_chunk(request_path: Option<&str>) -> Option<ChunkInfo> {
 fn record_usage(
     conn: &rusqlite::Connection,
     context: &JobContext,
+    backend: &TranscriptionBackend,
     status: &str,
     error_code: Option<String>,
 ) -> Result<(), AppError> {
-    let TranscriptionBackend::Api { profile, model } = &context.backend else {
+    let TranscriptionBackend::Api { profile, model } = backend else {
         return Ok(());
     };
     providers::insert_usage(
@@ -209,14 +235,27 @@ fn record_usage(
     )
 }
 
+fn record_backend_usage(
+    app: &AppHandle,
+    context: &JobContext,
+    backend: &TranscriptionBackend,
+    status: &str,
+    error_code: Option<String>,
+) -> Result<(), AppError> {
+    let state = app.state::<DbState>();
+    let conn = state.0.lock().map_err(lock_error)?;
+    record_usage(&conn, context, backend, status, error_code)
+}
+
 fn finish_with_success(
     app: &AppHandle,
     context: &JobContext,
+    backend: &TranscriptionBackend,
     text: String,
 ) -> Result<(), AppError> {
     let state = app.state::<DbState>();
     let conn = state.0.lock().map_err(lock_error)?;
-    record_usage(&conn, context, "success", None)?;
+    record_usage(&conn, context, backend, "success", None)?;
     let cleaned = dedupe::clean_transcript(&text);
     if !cleaned.is_empty() {
         let previous = meetings::last_segment_text(&conn, &context.meeting.id, &context.chunk.source)?;
@@ -256,7 +295,6 @@ fn finish_with_success(
 fn finish_with_error(app: &AppHandle, context: &JobContext, err: AppError) -> Result<(), AppError> {
     let state = app.state::<DbState>();
     let conn = state.0.lock().map_err(lock_error)?;
-    record_usage(&conn, context, "error", Some(err.code.clone()))?;
     jobs::fail_job(&conn, &context.job_id, &err.code, err.retryable)?;
     emit_transcription_error(app, &context.meeting.id, &err.code, &err.message);
     Ok(())

@@ -3,14 +3,18 @@ import { Copy, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { PanePlaceholder } from "../../components/common/PanePlaceholder";
 import { ReminderSection } from "../notifications/ReminderSection";
+import "./taskColors.css";
 import { useTaskStore } from "../../stores/useTaskStore";
 import {
   PRIORITY_LABELS,
   STATUS_LABELS,
+  TASK_COLOR_LABELS,
+  TASK_COLOR_VALUES,
   TOKYO_TZ,
   buildDueAtUtc,
   splitDueAtUtc,
   type Task,
+  type TaskColor,
   type TaskPriority,
   type TaskStatus,
 } from "./taskModel";
@@ -118,6 +122,22 @@ function DetailForm({ task }: { task: Task }) {
           />
         </label>
       </div>
+      <fieldset className="task-color-picker">
+        <legend>色</legend>
+        {(Object.keys(TASK_COLOR_LABELS) as TaskColor[]).map((color) => (
+          <label key={color} title={TASK_COLOR_LABELS[color]}>
+            <input
+              type="radio"
+              name={`task-color-${task.id}`}
+              value={color}
+              checked={task.color === color}
+              onChange={() => void updateTask(task.id, { color })}
+            />
+            <span style={{ backgroundColor: TASK_COLOR_VALUES[color] }} aria-hidden />
+            <span className="sr-only">{TASK_COLOR_LABELS[color]}</span>
+          </label>
+        ))}
+      </fieldset>
       <label className="task-detail__memo">
         メモ
         <textarea

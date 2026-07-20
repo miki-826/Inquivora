@@ -12,6 +12,8 @@ pub struct ModelSpec {
     pub name: &'static str,
     pub display_name: &'static str,
     pub size_mb: u64,
+    pub size_bytes: u64,
+    pub sha256: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -29,16 +31,22 @@ const CATALOG: &[ModelSpec] = &[
         name: "tiny",
         display_name: "Tiny（最小・低精度）",
         size_mb: 75,
+        size_bytes: 77_691_713,
+        sha256: "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21",
     },
     ModelSpec {
         name: "base",
         display_name: "Base（小型・軽量）",
         size_mb: 142,
+        size_bytes: 147_951_465,
+        sha256: "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
     },
     ModelSpec {
         name: "small",
         display_name: "Small（推奨・日本語向け）",
         size_mb: 466,
+        size_bytes: 487_601_967,
+        sha256: "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
     },
 ];
 
@@ -46,18 +54,18 @@ pub fn catalog() -> &'static [ModelSpec] {
     CATALOG
 }
 
-fn spec(name: &str) -> Option<&'static ModelSpec> {
+pub fn model_spec(name: &str) -> Option<&'static ModelSpec> {
     CATALOG.iter().find(|m| m.name == name)
 }
 
 pub fn model_url(name: &str) -> Option<String> {
-    spec(name).map(|m| {
+    model_spec(name).map(|m| {
         format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{}.bin", m.name)
     })
 }
 
 pub fn model_path(models_dir: &Path, name: &str) -> Option<PathBuf> {
-    spec(name).map(|m| models_dir.join(format!("ggml-{}.bin", m.name)))
+    model_spec(name).map(|m| models_dir.join(format!("ggml-{}.bin", m.name)))
 }
 
 pub fn model_status(models_dir: &Path, selected: &str) -> Vec<ModelStatus> {
@@ -77,13 +85,13 @@ pub fn selected_model(conn: &Connection) -> Result<String, AppError> {
     let stored = crate::database::settings::get_setting(conn, SELECTED_MODEL_KEY)?
         .and_then(|v| v.as_str().map(str::to_string));
     Ok(match stored {
-        Some(name) if spec(&name).is_some() => name,
+        Some(name) if model_spec(&name).is_some() => name,
         _ => DEFAULT_MODEL.to_string(),
     })
 }
 
 pub fn set_selected_model(conn: &Connection, name: &str) -> Result<(), AppError> {
-    if spec(name).is_none() {
+    if model_spec(name).is_none() {
         return Err(AppError::new(
             "VALIDATION_ERROR",
             format!("不明なWhisperモデルです: {name}"),
@@ -108,6 +116,8 @@ mod tests {
     fn カタログはtiny_base_smallを含む() {
         let names: Vec<&str> = catalog().iter().map(|m| m.name).collect();
         assert_eq!(names, vec!["tiny", "base", "small"]);
+        assert!(catalog().iter().all(|model| model.sha256.len() == 64));
+        assert!(catalog().iter().all(|model| model.size_bytes > 0));
     }
 
     #[test]

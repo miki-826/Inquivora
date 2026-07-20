@@ -9,9 +9,6 @@
     "core:default",
     "opener:default",
     "dialog:default",
-    "fs:default",
-    "shell:default",
-    "store:default",
     "deep-link:default",
     "autostart:default"
   ]

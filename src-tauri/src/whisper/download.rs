@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use futures_util::StreamExt;
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::AsyncWriteExt;
 
@@ -24,12 +25,16 @@ pub fn models_dir(app: &AppHandle) -> Result<PathBuf, AppError> {
 /// Whisperモデルをダウンロードし、完了後に正式なファイル名へ置き換える。
 /// 進捗は whisper:model-download-progress イベントで通知する。
 pub async fn download_model(app: &AppHandle, name: &str) -> Result<(), AppError> {
-    let url = models::model_url(name)
+    let spec = models::model_spec(name)
         .ok_or_else(|| AppError::new("VALIDATION_ERROR", format!("不明なWhisperモデルです: {name}"), false))?;
+    let url = models::model_url(name).expect("カタログ検証済み");
     let dir = models_dir(app)?;
     let target = models::model_path(&dir, name).expect("カタログ検証済み");
     if target.is_file() {
-        return Ok(());
+        if verify_file(&target, spec.sha256, spec.size_bytes).await? {
+            return Ok(());
+        }
+        cleanup(&target).await;
     }
     tokio::fs::create_dir_all(&dir)
         .await
@@ -51,7 +56,16 @@ pub async fn download_model(app: &AppHandle, name: &str) -> Result<(), AppError>
         )));
     }
     let total_bytes = response.content_length();
+    if let Some(total) = total_bytes {
+        if total != spec.size_bytes {
+            return Err(download_error(format!(
+                "モデルのサイズがカタログと一致しません（expected {}, actual {total}）",
+                spec.size_bytes
+            )));
+        }
+    }
     let mut received: u64 = 0;
+    let mut hasher = Sha256::new();
     let mut file = tokio::fs::File::create(&temp_path)
         .await
         .map_err(|e| download_error(format!("一時ファイルを作成できません: {e}")))?;
@@ -61,38 +75,78 @@ pub async fn download_model(app: &AppHandle, name: &str) -> Result<(), AppError>
         let chunk = match chunk {
             Ok(chunk) => chunk,
             Err(e) => {
+                drop(file);
                 cleanup(&temp_path).await;
                 return Err(download_error(format!("ダウンロード中に切断されました: {e}")));
             }
         };
         if let Err(e) = file.write_all(&chunk).await {
+            drop(file);
             cleanup(&temp_path).await;
             return Err(download_error(format!("モデルの書き込みに失敗しました: {e}")));
         }
+        hasher.update(&chunk);
         received += chunk.len() as u64;
+        if received > spec.size_bytes {
+            drop(file);
+            cleanup(&temp_path).await;
+            return Err(download_error("モデルが許容サイズを超えました".to_string()));
+        }
         if received - last_emitted >= 4 * 1024 * 1024 {
             last_emitted = received;
             emit_progress(app, name, received, total_bytes);
         }
     }
     if let Err(e) = file.flush().await {
+        drop(file);
         cleanup(&temp_path).await;
         return Err(download_error(format!("モデルの書き込みに失敗しました: {e}")));
     }
     drop(file);
-    if let Some(total) = total_bytes {
-        if received != total {
-            cleanup(&temp_path).await;
-            return Err(download_error(
-                "ダウンロードが途中で終了しました。再試行してください".to_string(),
-            ));
-        }
+    if received != spec.size_bytes {
+        cleanup(&temp_path).await;
+        return Err(download_error(
+            "ダウンロードが途中で終了しました。再試行してください".to_string(),
+        ));
+    }
+    let actual_hash = format!("{:x}", hasher.finalize());
+    if actual_hash != spec.sha256 {
+        cleanup(&temp_path).await;
+        return Err(download_error(
+            "モデルのSHA-256検証に失敗しました。ファイルは配置されません".to_string(),
+        ));
     }
     tokio::fs::rename(&temp_path, &target)
         .await
         .map_err(|e| download_error(format!("モデルファイルの配置に失敗しました: {e}")))?;
     emit_progress(app, name, received, total_bytes.or(Some(received)));
     Ok(())
+}
+
+async fn verify_file(path: &Path, expected_hash: &str, expected_size: u64) -> Result<bool, AppError> {
+    let metadata = tokio::fs::metadata(path)
+        .await
+        .map_err(|e| download_error(format!("既存モデルを確認できません: {e}")))?;
+    if metadata.len() != expected_size {
+        return Ok(false);
+    }
+    let mut file = tokio::fs::File::open(path)
+        .await
+        .map_err(|e| download_error(format!("既存モデルを開けません: {e}")))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0u8; 1024 * 1024];
+    loop {
+        use tokio::io::AsyncReadExt;
+        let read = file
+            .read(&mut buffer)
+            .await
+            .map_err(|e| download_error(format!("既存モデルを検証できません: {e}")))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", hasher.finalize()) == expected_hash)
 }
 
 async fn cleanup(temp_path: &Path) {

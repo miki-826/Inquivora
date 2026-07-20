@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::fs;
 
 use crate::error::AppError;
 
@@ -53,6 +54,35 @@ pub fn ensure_within_workspace(root: &Path, absolute: &Path) -> Result<(), AppEr
             "ワークスペース外のパスです: {}",
             absolute.display()
         )));
+    }
+
+    // 実在するワークスペースではリンク解決後の実パスも検証する。
+    // 新規ファイルは最も近い実在親をcanonicalizeするため、親ディレクトリが
+    // シンボリックリンク／Windowsジャンクションでも外部へ抜けられない。
+    if root.exists() {
+        let canonical_root = fs::canonicalize(root).map_err(|e| {
+            outside_workspace(format!("ワークスペースルートを確認できません: {e}"))
+        })?;
+        let existing_ancestor = absolute
+            .ancestors()
+            .find(|candidate| candidate.exists())
+            .ok_or_else(|| outside_workspace("対象パスの実在する親を確認できません"))?;
+        let canonical_target = fs::canonicalize(existing_ancestor).map_err(|e| {
+            outside_workspace(format!("対象パスの実体を確認できません: {e}"))
+        })?;
+        let canonical_root_segments = normalized_segments(&canonical_root)
+            .ok_or_else(|| outside_workspace("ワークスペースルートが不正です"))?;
+        let canonical_target_segments = normalized_segments(&canonical_target)
+            .ok_or_else(|| outside_workspace("対象パスが不正です"))?;
+        if canonical_target_segments.len() < canonical_root_segments.len()
+            || canonical_target_segments[..canonical_root_segments.len()]
+                != canonical_root_segments[..]
+        {
+            return Err(outside_workspace(format!(
+                "リンク先がワークスペース外です: {}",
+                absolute.display()
+            )));
+        }
     }
     Ok(())
 }
@@ -138,6 +168,25 @@ mod tests {
     #[test]
     fn 親参照を含む絶対パスを拒否する() {
         let err = ensure_within_workspace(&root(), &root().join("docs").join("..").join("..").join("a.md"))
+            .unwrap_err();
+        assert_eq!(err.code, "PATH_OUTSIDE_WORKSPACE");
+    }
+
+    #[test]
+    fn リンク経由のワークスペース外到達を拒否する() {
+        let workspace = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let link = workspace.path().join("outside-link");
+        #[cfg(windows)]
+        if std::os::windows::fs::symlink_dir(outside.path(), &link).is_err() {
+            // Windows環境でシンボリックリンク権限が無い場合は実機スモークで
+            // ジャンクションを確認する。
+            return;
+        }
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(outside.path(), &link).unwrap();
+
+        let err = ensure_within_workspace(workspace.path(), &link.join("secret.md"))
             .unwrap_err();
         assert_eq!(err.code, "PATH_OUTSIDE_WORKSPACE");
     }

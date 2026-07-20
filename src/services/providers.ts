@@ -1,5 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
-import { parseProviderList, providerSchema, type Provider } from "../features/settings/providerModel";
+import {
+  parseProviderList,
+  providerSchema,
+  type FeatureKey,
+  type Provider,
+} from "../features/settings/providerModel";
 
 export type ProviderInput = {
   displayName: string;
@@ -46,6 +51,13 @@ export type UsageLog = {
   status: string;
   errorCode: string | null;
   createdAt: string;
+};
+
+export type AiDisclosure = {
+  mode: "api" | "local";
+  providerName: string | null;
+  modelId: string | null;
+  sendTarget: string;
 };
 
 export async function listProviders(): Promise<Provider[]> {
@@ -114,4 +126,42 @@ export async function listUsage(
     providerProfileId: providerProfileId ?? null,
     limit: limit ?? 100,
   });
+}
+
+export async function getAiDisclosure(featureKey: FeatureKey): Promise<AiDisclosure> {
+  const [providers, binding] = await Promise.all([
+    listProviders(),
+    getFeatureBinding(featureKey),
+  ]);
+  const required = featureKey === "transcription.batch"
+    ? "transcription.batch"
+    : "text.structured_output";
+  const candidates = binding
+    ? [
+        [binding.providerProfileId, binding.modelId],
+        [binding.fallbackProviderProfileId, binding.fallbackModelId],
+      ]
+    : [];
+  for (const [providerId, modelId] of candidates) {
+    const provider = providers.find(
+      (item) => item.id === providerId && item.enabled && item.capabilities.includes(required),
+    );
+    if (provider && modelId) {
+      return {
+        mode: "api",
+        providerName: provider.displayName,
+        modelId,
+        sendTarget:
+          featureKey === "transcription.batch"
+            ? "録音した音声チャンク"
+            : "文字起こしと会議メモ",
+      };
+    }
+  }
+  return {
+    mode: "local",
+    providerName: null,
+    modelId: null,
+    sendTarget: "録音した音声チャンク（PC内だけで処理）",
+  };
 }

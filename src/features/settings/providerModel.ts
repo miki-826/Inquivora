@@ -10,6 +10,7 @@ export const FEATURE_KEYS = [
   "editor.ai",
 ] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
+export const ACTIVE_FEATURE_KEYS = ["transcription.batch", "meeting.summary"] as const satisfies readonly FeatureKey[];
 
 const FEATURE_LABELS: Record<FeatureKey, string> = {
   "transcription.batch": "バッチ文字起こし",
@@ -59,17 +60,21 @@ export function validateBaseUrl(raw: string): string | null {
   if (trimmed.length === 0) {
     return "Base URLを入力してください";
   }
-  const lower = trimmed.toLowerCase();
-  if (lower.startsWith("https://")) {
-    return lower.length > "https://".length ? null : "Base URLのホストがありません";
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return "Base URLの形式が正しくありません";
   }
-  if (lower.startsWith("http://")) {
-    const rest = lower.slice("http://".length);
-    for (const host of ["localhost", "127.0.0.1", "[::1]"]) {
-      if (rest === host || rest.startsWith(`${host}:`) || rest.startsWith(`${host}/`)) {
-        return null;
-      }
-    }
+  if (url.username || url.password) {
+    return "Base URLにユーザー名やパスワードは指定できません";
+  }
+  if (!url.hostname) return "Base URLのホストがありません";
+  if (url.protocol === "https:") return null;
+  if (url.protocol === "http:") {
+    const host = url.hostname.toLowerCase();
+    const loopback = host === "localhost" || host === "[::1]" || /^127(?:\.\d{1,3}){3}$/.test(host);
+    if (loopback) return null;
     return "平文HTTPはローカルホスト（localhost / 127.0.0.1 / [::1]）のみ許可されます";
   }
   return "Base URLはhttps://で指定してください（ローカルAPIはhttp://localhost等）";

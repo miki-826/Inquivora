@@ -13,6 +13,47 @@ pub enum TaskPriority {
     Low,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TaskColor {
+    Blue,
+    Indigo,
+    Violet,
+    Pink,
+    Red,
+    Orange,
+    Green,
+    Teal,
+}
+
+impl TaskColor {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TaskColor::Blue => "blue",
+            TaskColor::Indigo => "indigo",
+            TaskColor::Violet => "violet",
+            TaskColor::Pink => "pink",
+            TaskColor::Red => "red",
+            TaskColor::Orange => "orange",
+            TaskColor::Green => "green",
+            TaskColor::Teal => "teal",
+        }
+    }
+
+    fn from_db(value: &str) -> Self {
+        match value {
+            "indigo" => TaskColor::Indigo,
+            "violet" => TaskColor::Violet,
+            "pink" => TaskColor::Pink,
+            "red" => TaskColor::Red,
+            "orange" => TaskColor::Orange,
+            "green" => TaskColor::Green,
+            "teal" => TaskColor::Teal,
+            _ => TaskColor::Blue,
+        }
+    }
+}
+
 impl TaskPriority {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -73,6 +114,7 @@ pub struct Task {
     pub due_at: Option<String>,
     pub timezone: String,
     pub priority: TaskPriority,
+    pub color: TaskColor,
     pub status: TaskStatus,
     pub assignee: Option<String>,
     pub project_name: Option<String>,
@@ -91,6 +133,10 @@ fn default_priority() -> TaskPriority {
     TaskPriority::Medium
 }
 
+fn default_color() -> TaskColor {
+    TaskColor::Blue
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskInput {
@@ -103,6 +149,8 @@ pub struct TaskInput {
     pub timezone: String,
     #[serde(default = "default_priority")]
     pub priority: TaskPriority,
+    #[serde(default = "default_color")]
+    pub color: TaskColor,
     #[serde(default)]
     pub status: Option<TaskStatus>,
     #[serde(default)]
@@ -125,6 +173,7 @@ pub struct TaskPatch {
     pub due_at_utc: Option<Option<String>>,
     pub timezone: Option<String>,
     pub priority: Option<TaskPriority>,
+    pub color: Option<TaskColor>,
     pub status: Option<TaskStatus>,
     #[serde(deserialize_with = "double_option")]
     pub assignee: Option<Option<String>>,
@@ -157,7 +206,7 @@ pub struct TaskFilter {
     pub assignee: Option<String>,
 }
 
-const SELECT_COLUMNS: &str = "id, title, description, due_at, timezone, priority, status, assignee, project_name, meeting_id, linked_file_path, created_at, updated_at, completed_at";
+const SELECT_COLUMNS: &str = "id, title, description, due_at, timezone, priority, color, status, assignee, project_name, meeting_id, linked_file_path, created_at, updated_at, completed_at";
 
 const DEFAULT_ORDER: &str = "ORDER BY
   CASE WHEN status = 'completed' THEN 1 ELSE 0 END,
@@ -168,7 +217,8 @@ const DEFAULT_ORDER: &str = "ORDER BY
 
 fn row_to_task(row: &rusqlite::Row<'_>) -> rusqlite::Result<Task> {
     let priority: String = row.get(5)?;
-    let status: String = row.get(6)?;
+    let color: String = row.get(6)?;
+    let status: String = row.get(7)?;
     Ok(Task {
         id: row.get(0)?,
         title: row.get(1)?,
@@ -176,14 +226,15 @@ fn row_to_task(row: &rusqlite::Row<'_>) -> rusqlite::Result<Task> {
         due_at: row.get(3)?,
         timezone: row.get(4)?,
         priority: TaskPriority::from_db(&priority),
+        color: TaskColor::from_db(&color),
         status: TaskStatus::from_db(&status),
-        assignee: row.get(7)?,
-        project_name: row.get(8)?,
-        meeting_id: row.get(9)?,
-        linked_file_path: row.get(10)?,
-        created_at: row.get(11)?,
-        updated_at: row.get(12)?,
-        completed_at: row.get(13)?,
+        assignee: row.get(8)?,
+        project_name: row.get(9)?,
+        meeting_id: row.get(10)?,
+        linked_file_path: row.get(11)?,
+        created_at: row.get(12)?,
+        updated_at: row.get(13)?,
+        completed_at: row.get(14)?,
     })
 }
 
@@ -226,8 +277,8 @@ pub fn create_task(conn: &Connection, input: &TaskInput) -> Result<Task, AppErro
     let status = input.status.unwrap_or(TaskStatus::Todo);
     let completed_at = (status == TaskStatus::Completed).then(|| now.clone());
     conn.execute(
-        "INSERT INTO tasks (id, title, description, due_at, timezone, priority, status, assignee, project_name, meeting_id, linked_file_path, created_at, updated_at, completed_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12, ?13)",
+        "INSERT INTO tasks (id, title, description, due_at, timezone, priority, color, status, assignee, project_name, meeting_id, linked_file_path, created_at, updated_at, completed_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13, ?14)",
         rusqlite::params![
             id,
             input.title.trim(),
@@ -235,6 +286,7 @@ pub fn create_task(conn: &Connection, input: &TaskInput) -> Result<Task, AppErro
             input.due_at_utc,
             input.timezone,
             input.priority.as_str(),
+            input.color.as_str(),
             status.as_str(),
             input.assignee,
             input.project_name,
@@ -274,8 +326,8 @@ pub fn update_task(conn: &Connection, id: &str, patch: &TaskPatch) -> Result<Tas
         None
     };
     conn.execute(
-        "UPDATE tasks SET title = ?2, description = ?3, due_at = ?4, timezone = ?5, priority = ?6, status = ?7,
-           assignee = ?8, project_name = ?9, meeting_id = ?10, linked_file_path = ?11, updated_at = ?12, completed_at = ?13
+        "UPDATE tasks SET title = ?2, description = ?3, due_at = ?4, timezone = ?5, priority = ?6, color = ?7, status = ?8,
+           assignee = ?9, project_name = ?10, meeting_id = ?11, linked_file_path = ?12, updated_at = ?13, completed_at = ?14
          WHERE id = ?1",
         rusqlite::params![
             id,
@@ -284,6 +336,7 @@ pub fn update_task(conn: &Connection, id: &str, patch: &TaskPatch) -> Result<Tas
             due_at,
             patch.timezone.clone().unwrap_or(current.timezone),
             patch.priority.unwrap_or(current.priority).as_str(),
+            patch.color.unwrap_or(current.color).as_str(),
             status.as_str(),
             patch.assignee.clone().unwrap_or(current.assignee),
             patch.project_name.clone().unwrap_or(current.project_name),
@@ -447,6 +500,7 @@ mod tests {
         let task = create_task(&conn, &input("資料作成")).unwrap();
         assert_eq!(task.title, "資料作成");
         assert_eq!(task.priority, TaskPriority::Medium);
+        assert_eq!(task.color, TaskColor::Blue);
         assert_eq!(task.status, TaskStatus::Todo);
         assert_eq!(task.timezone, "Asia/Tokyo");
         assert!(task.due_at.is_none());

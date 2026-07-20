@@ -56,6 +56,16 @@ describe("validateBaseUrl", () => {
     expect(validateBaseUrl("file:///c:/x")).not.toBeNull();
     expect(validateBaseUrl("api.openai.com")).not.toBeNull();
   });
+
+  it("ユーザー情報付きURLでlocalhost制約を回避できない", () => {
+    expect(validateBaseUrl("http://localhost:80@evil.example/v1")).not.toBeNull();
+    expect(validateBaseUrl("https://user:pass@example.com/v1")).not.toBeNull();
+  });
+
+  it("IPv6ループバックを許可し空ホストを拒否する", () => {
+    expect(validateBaseUrl("http://[::1]:8080/v1")).toBeNull();
+    expect(validateBaseUrl("https://")).not.toBeNull();
+  });
 });
 
 describe("capabilitiesForType", () => {

@@ -111,6 +111,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       description: source.description,
       dueAtUtc: source.dueAtUtc,
       priority: source.priority,
+      color: source.color,
       assignee: source.assignee,
       projectName: source.projectName,
       linkedFilePath: source.linkedFilePath,

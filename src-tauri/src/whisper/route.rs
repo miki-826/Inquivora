@@ -2,7 +2,7 @@ use rusqlite::Connection;
 
 use crate::error::AppError;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TranscriptionRoute {
     Api { provider_id: String, model: String },
     Local,
@@ -14,36 +14,85 @@ pub fn resolve_transcription_route(
     conn: &Connection,
     local_available: bool,
 ) -> Result<TranscriptionRoute, AppError> {
+    resolve_transcription_routes(conn, local_available).map(|mut routes| routes.remove(0))
+}
+
+/// Primary、Fallback、ローカルWhisperの順で利用可能な経路を返す。
+pub fn resolve_transcription_routes(
+    conn: &Connection,
+    local_available: bool,
+) -> Result<Vec<TranscriptionRoute>, AppError> {
     use crate::database::providers;
     use crate::meeting::worker::TRANSCRIPTION_FEATURE;
 
     let binding = providers::get_binding(conn, TRANSCRIPTION_FEATURE)?;
-    let configured = binding.and_then(|b| match (b.provider_profile_id, b.model_id) {
-        (Some(provider_id), Some(model)) => Some((provider_id, model)),
-        _ => None,
-    });
-    let Some((provider_id, model)) = configured else {
+    let configured = binding
+        .as_ref()
+        .into_iter()
+        .flat_map(|binding| {
+            [
+                (
+                    binding.provider_profile_id.as_ref(),
+                    binding.model_id.as_ref(),
+                ),
+                (
+                    binding.fallback_provider_profile_id.as_ref(),
+                    binding.fallback_model_id.as_ref(),
+                ),
+            ]
+        })
+        .filter_map(|(provider_id, model)| Some((provider_id?.clone(), model?.clone())))
+        .collect::<Vec<_>>();
+    if configured.is_empty() {
         if local_available {
-            return Ok(TranscriptionRoute::Local);
+            return Ok(vec![TranscriptionRoute::Local]);
         }
         return Err(AppError::new(
             "TRANSCRIPTION_NOT_READY",
             "文字起こしの準備ができていません。設定画面でWhisperモデルをダウンロードするか、API Providerを設定してください",
             false,
         ));
-    };
-    let profile = providers::get_provider(conn, &provider_id)?;
-    if !profile.enabled {
-        if local_available {
-            return Ok(TranscriptionRoute::Local);
-        }
-        return Err(AppError::new(
-            "API_PROVIDER_DISABLED",
-            "文字起こしのProviderが無効化されています。有効化するかWhisperモデルをダウンロードしてください",
-            false,
-        ));
     }
-    Ok(TranscriptionRoute::Api { provider_id, model })
+    let mut last_error = None;
+    let mut routes = Vec::new();
+    for (provider_id, model) in configured {
+        match providers::get_provider(conn, &provider_id) {
+            Ok(profile)
+                if profile.enabled
+                    && profile
+                        .capabilities
+                        .iter()
+                        .any(|capability| capability == TRANSCRIPTION_FEATURE) =>
+            {
+                routes.push(TranscriptionRoute::Api { provider_id, model });
+            }
+            Ok(profile) if !profile.enabled => {
+                last_error = Some(AppError::new(
+                    "API_PROVIDER_DISABLED",
+                    "文字起こしのProviderが無効化されています",
+                    false,
+                ));
+            }
+            Ok(_) => {
+                last_error = Some(AppError::new(
+                    "API_CAPABILITY_MISSING",
+                    "文字起こしProviderにtranscription.batch capabilityがありません",
+                    false,
+                ));
+            }
+            Err(err) => last_error = Some(err),
+        }
+    }
+    if local_available {
+        routes.push(TranscriptionRoute::Local);
+    }
+    if !routes.is_empty() {
+        Ok(routes)
+    } else {
+        Err(last_error.unwrap_or_else(|| {
+            AppError::new("TRANSCRIPTION_NOT_READY", "文字起こしの準備ができていません", false)
+        }))
+    }
 }
 
 #[cfg(test)]
@@ -63,7 +112,7 @@ mod tests {
         providers::create_provider(
             conn,
             ProviderInput {
-                display_name: "OpenAI".to_string(),
+                display_name: format!("OpenAI {}", uuid::Uuid::new_v4()),
                 provider_type: "openai".to_string(),
                 base_url: "https://api.openai.com/v1".to_string(),
                 auth_type: "bearer".to_string(),
@@ -161,6 +210,32 @@ mod tests {
         assert_eq!(
             resolve_transcription_route(&conn, true).unwrap(),
             TranscriptionRoute::Local
+        );
+    }
+
+    #[test]
+    fn primary無効時はfallback_providerを使う() {
+        let (_dir, conn) = temp_conn();
+        let primary = create_provider(&conn);
+        let fallback = create_provider(&conn);
+        providers::set_provider_enabled(&conn, &primary, false).unwrap();
+        providers::set_binding(
+            &conn,
+            TRANSCRIPTION_FEATURE,
+            BindingInput {
+                provider_profile_id: Some(primary),
+                model_id: Some("primary-model".to_string()),
+                fallback_provider_profile_id: Some(fallback.clone()),
+                fallback_model_id: Some("fallback-model".to_string()),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            resolve_transcription_route(&conn, false).unwrap(),
+            TranscriptionRoute::Api {
+                provider_id: fallback,
+                model: "fallback-model".to_string(),
+            }
         );
     }
 }

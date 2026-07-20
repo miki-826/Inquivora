@@ -11,7 +11,7 @@
 |---|---|
 | 文書名 | Inquivora 実装仕様書 |
 | 対象バージョン | MVP 0.1.0 |
-| 仕様書改訂 | v1.2（GitHub先行push・GitHub Actionsビルド対応） |
+| 仕様書改訂 | v1.3（セキュリティ強化・メモ連携タスク・色分けカレンダー対応） |
 | 対象OS | Windows 11 x64 |
 | 配布形式 | NSISセットアップEXE |
 | データ方針 | ローカルファースト |
@@ -527,7 +527,8 @@ inquivora/
 カレンダー画面では中央領域全体をカレンダーへ切り替える。
 
 - 月・週・日表示
-- 右：選択日の予定詳細
+- 左：期日なしの未完了タスク（カレンダーへドラッグ可能）
+- 右：選択日の予定・タスク詳細
 - エディタタブは非表示
 - 左ファイルツリーは非表示
 
@@ -641,6 +642,8 @@ html css scss js jsx ts tsx py ps1 bat sh sql rs cs java
 png jpg jpeg gif webp svg pdf wav mp3 m4a mp4 webm
 ```
 
+PDFはアプリ内の読み取り専用ビューで表示する。
+
 ### 外部アプリ対象
 
 ```text
@@ -710,6 +713,9 @@ docx xlsx pptx dwg zip 7z exe dll
 - 未保存インジケーター
 - Markdownプレビュー
 - 差分表示
+- Ctrl+F検索ウィジェットは×、Escのどちらでも閉じられる
+- 縦横スクロールは維持し、エディタ内のスクロールバーだけを非表示にする
+- 選択テキストの右クリックメニューから、確認・編集ダイアログを経てタスク化できる
 
 ## 8.2 タブモデル
 
@@ -1407,6 +1413,7 @@ export type Task = {
   dueAtUtc: string | null;
   timezone: string;
   priority: "high" | "medium" | "low";
+  color: "blue" | "indigo" | "violet" | "pink" | "red" | "orange" | "green" | "teal";
   status: "todo" | "in_progress" | "on_hold" | "completed" | "cancelled";
   assignee: string | null;
   projectName: string | null;
@@ -1432,6 +1439,8 @@ export type Task = {
 - 通知追加
 - 関連ファイルを開く
 - 関連議事録を開く
+- 8色から表示色を選ぶ
+- メモ内の選択テキストから作成する
 
 ## 12.4 一覧フィルター
 
@@ -1478,6 +1487,7 @@ export type Task = {
 - 今日へ移動
 - 月・週・日切替
 - 会議開始
+- 左の期日なしタスクを日付・時刻へドラッグして期日を設定
 
 ## 13.4 タスク表示
 
@@ -1485,6 +1495,7 @@ export type Task = {
 - 日付のみ：終日イベント
 - 完了：薄く表示または非表示設定
 - タスクと予定はアイコンで区別
+- タスクは個別に選択した色で表示
 
 ## 13.5 日時
 
@@ -2253,6 +2264,7 @@ crash.log
 | 保存 | Ctrl+S |
 | 全保存 | Ctrl+Shift+S |
 | ファイル内検索 | Ctrl+F |
+| 選択テキストをタスク化 | 右クリック→「選択範囲からタスクを作成」 |
 | 全文検索 | Ctrl+Shift+F |
 | コマンドパレット | Ctrl+Shift+P |
 | 新規タスク | Ctrl+Shift+T |
@@ -2973,4 +2985,3 @@ Phase 1の受入基準を満たした後で停止し、次のPhaseへ進む前�
 - NAudio：WASAPI Capture、Loopback Capture
 - GitHub Docs：Workflow Artifacts、Releases、Actions Secrets、Push Protection、Branch Protection
 - Tauri 2：Distribute with GitHub、Windows Code Signing
-

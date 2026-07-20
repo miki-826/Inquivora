@@ -15,7 +15,14 @@ pub const FEATURE_KEYS: &[&str] = &[
     "editor.ai",
 ];
 
-const PROTECTED_HEADERS: &[&str] = &["authorization", "x-api-key", "proxy-authorization", "cookie"];
+const PROTECTED_HEADERS: &[&str] = &[
+    "authorization",
+    "x-api-key",
+    "proxy-authorization",
+    "cookie",
+    "openai-organization",
+    "openai-project",
+];
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -86,28 +93,32 @@ pub fn normalize_base_url(raw: &str) -> Result<String, AppError> {
     if trimmed.is_empty() {
         return Err(validation_error("Base URLを入力してください"));
     }
-    let lower = trimmed.to_ascii_lowercase();
-    if let Some(rest) = lower.strip_prefix("https://") {
-        if rest.is_empty() {
-            return Err(validation_error("Base URLのホストがありません"));
-        }
-        return Ok(trimmed.to_string());
-    }
-    if let Some(rest) = lower.strip_prefix("http://") {
-        for host in ["localhost", "127.0.0.1", "[::1]"] {
-            if let Some(after) = rest.strip_prefix(host) {
-                if after.is_empty() || after.starts_with(':') || after.starts_with('/') {
-                    return Ok(trimmed.to_string());
-                }
-            }
-        }
+    let parsed = reqwest::Url::parse(trimmed)
+        .map_err(|_| validation_error("Base URLの形式が正しくありません"))?;
+    if !parsed.username().is_empty() || parsed.password().is_some() {
         return Err(validation_error(
-            "平文HTTPはローカルホスト（localhost / 127.0.0.1 / [::1]）のみ許可されます",
+            "Base URLにユーザー名やパスワードは指定できません",
         ));
     }
-    Err(validation_error(
-        "Base URLはhttps://（ローカルAPIはhttp://localhost等）で指定してください",
-    ))
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| validation_error("Base URLのホストがありません"))?;
+    let host_ip = host.trim_start_matches('[').trim_end_matches(']');
+    let loopback = host.eq_ignore_ascii_case("localhost")
+        || host_ip
+            .parse::<std::net::IpAddr>()
+            .map(|ip| ip.is_loopback())
+            .unwrap_or(false);
+    match parsed.scheme() {
+        "https" => Ok(trimmed.to_string()),
+        "http" if loopback => Ok(trimmed.to_string()),
+        "http" => Err(validation_error(
+            "平文HTTPはローカルホスト（localhost / 127.0.0.1 / [::1]）のみ許可されます",
+        )),
+        _ => Err(validation_error(
+            "Base URLはhttps://（ローカルAPIはhttp://localhost等）で指定してください",
+        )),
+    }
 }
 
 fn validate_headers(headers: &HashMap<String, String>) -> Result<(), AppError> {
@@ -506,6 +517,15 @@ mod tests {
         assert!(normalize_base_url("javascript:alert(1)").is_err());
         assert!(normalize_base_url("data:text/plain,x").is_err());
         assert!(normalize_base_url("api.openai.com/v1").is_err());
+    }
+
+    #[test]
+    fn urlパーサーでuserinfoと不正hostを拒否する() {
+        assert!(normalize_base_url("http://localhost:80@evil.example/v1").is_err());
+        assert!(normalize_base_url("https://user:pass@example.com/v1").is_err());
+        assert!(normalize_base_url("https://").is_err());
+        assert!(normalize_base_url("http://127.1.2.3:8080/v1").is_ok());
+        assert!(normalize_base_url("http://[::1]:8080/v1").is_ok());
     }
 
     #[test]

@@ -17,6 +17,7 @@ function task(overrides: Partial<Task>): Task {
     dueAtUtc: null,
     timezone: "Asia/Tokyo",
     priority: "medium",
+    color: "blue",
     status: "todo",
     assignee: null,
     projectName: null,

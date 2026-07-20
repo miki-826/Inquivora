@@ -252,7 +252,7 @@ mod tests {
     use crate::database::meetings::{create_meeting, MeetingInput, MeetingStatus};
     use crate::database::open_database;
     use crate::database::search::search;
-    use crate::database::tasks::{create_task, TaskInput, TaskPriority, TaskStatus};
+    use crate::database::tasks::{create_task, TaskColor, TaskInput, TaskPriority, TaskStatus};
 
     fn temp_conn() -> (tempfile::TempDir, Connection) {
         let dir = tempfile::tempdir().unwrap();
@@ -268,6 +268,7 @@ mod tests {
             due_at: None,
             timezone: "Asia/Tokyo".to_string(),
             priority: TaskPriority::Medium,
+            color: TaskColor::Blue,
             status: TaskStatus::Todo,
             assignee: Some("田中".to_string()),
             project_name: Some("基盤刷新".to_string()),
@@ -334,6 +335,7 @@ mod tests {
                 due_at_utc: None,
                 timezone: "Asia/Tokyo".to_string(),
                 priority: TaskPriority::Medium,
+                color: crate::database::tasks::TaskColor::Blue,
                 status: None,
                 assignee: None,
                 project_name: None,

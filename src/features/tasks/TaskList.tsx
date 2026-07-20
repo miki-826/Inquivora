@@ -1,9 +1,11 @@
 import { Check, Circle } from "lucide-react";
 import { useState } from "react";
 import { useTaskStore } from "../../stores/useTaskStore";
+import "./taskColors.css";
 import {
   PRIORITY_LABELS,
   STATUS_LABELS,
+  TASK_COLOR_VALUES,
   dueGroupOf,
   formatDueLabel,
   groupTasks,
@@ -40,6 +42,11 @@ function TaskRow({ task, now }: { task: Task; now: Date }) {
       >
         {completed ? <Check size={13} aria-hidden /> : <Circle size={13} aria-hidden />}
       </button>
+      <span
+        className="task-row__color"
+        style={{ backgroundColor: TASK_COLOR_VALUES[task.color] }}
+        aria-hidden
+      />
       <span className="task-row__title">{task.title}</span>
       {task.priority !== "medium" && (
         <span className={`task-row__badge task-row__badge--${task.priority}`}>

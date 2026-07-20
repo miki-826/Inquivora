@@ -10,6 +10,7 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   gif: "image/gif",
   webp: "image/webp",
   svg: "image/svg+xml",
+  pdf: "application/pdf",
   wav: "audio/wav",
   mp3: "audio/mpeg",
   m4a: "audio/mp4",
@@ -27,7 +28,7 @@ export function MediaView({ tab }: MediaViewProps) {
 
   const extension = tab.name.split(".").pop()?.toLowerCase() ?? "";
   const mime = MIME_BY_EXTENSION[extension];
-  const loadable = tab.viewType !== "pdf" && mime !== undefined;
+  const loadable = mime !== undefined;
 
   useEffect(() => {
     let cancelled = false;
@@ -53,6 +54,14 @@ export function MediaView({ tab }: MediaViewProps) {
       )}
       {tab.viewType === "audio" && dataUrl && <audio src={dataUrl} controls />}
       {tab.viewType === "video" && dataUrl && <video src={dataUrl} controls className="media-view__video" />}
+      {tab.viewType === "pdf" && dataUrl && (
+        <iframe
+          src={dataUrl}
+          title={`${tab.name} PDFプレビュー`}
+          className="media-view__pdf"
+          onError={() => setError("PDFをアプリ内で表示できませんでした")}
+        />
+      )}
       {loadable && !dataUrl && !error && <p className="media-view__hint">読み込み中…</p>}
       {(!loadable || error) && (
         <div className="media-view__fallback">

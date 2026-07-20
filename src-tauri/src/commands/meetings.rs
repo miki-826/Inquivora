@@ -11,11 +11,13 @@ use crate::database::meeting_ai::{self, MeetingDecision, TaskCandidate};
 use crate::database::providers::{self, UsageInput};
 use crate::database::jobs;
 use crate::database::meetings::{self, Meeting, MeetingStatus, TranscriptSegment};
+use crate::database::workspaces;
 use crate::error::AppError;
 use crate::meeting::summary::{self, MEETING_SUMMARY_FEATURE};
 use crate::meeting::{audio, files, markdown, session};
 use crate::search as indexer;
 use crate::whisper;
+use crate::workspace::paths::ensure_within_workspace;
 use crate::DbState;
 
 fn lock_error(e: impl std::fmt::Display) -> AppError {
@@ -24,6 +26,25 @@ fn lock_error(e: impl std::fmt::Display) -> AppError {
 
 fn default_true() -> bool {
     true
+}
+
+fn ensure_meeting_target(
+    conn: &rusqlite::Connection,
+    workspace_id: Option<&str>,
+    target_file_path: &str,
+) -> Result<(), AppError> {
+    let workspace_id = workspace_id.ok_or_else(|| {
+        AppError::new(
+            "WORKSPACE_REQUIRED",
+            "会議メモは開いているワークスペース内へ保存してください",
+            false,
+        )
+    })?;
+    let workspace = workspaces::get_workspace(conn, workspace_id)?;
+    ensure_within_workspace(
+        Path::new(&workspace.root_path),
+        Path::new(target_file_path),
+    )
 }
 
 #[derive(Debug, Deserialize)]
@@ -77,6 +98,11 @@ pub async fn meeting_start(app: AppHandle, input: MeetingStartInput) -> Result<M
             .map(|p| p.is_file())
             .unwrap_or(false);
         whisper::route::resolve_transcription_route(&conn, local_available)?;
+        ensure_meeting_target(
+            &conn,
+            input.workspace_id.as_deref(),
+            &input.target_file_path,
+        )?;
         meetings::create_meeting(
             &conn,
             meetings::MeetingInput {
@@ -248,7 +274,13 @@ pub fn meeting_append_segment(
 ) -> Result<(), AppError> {
     let meeting = {
         let conn = state.0.lock().map_err(lock_error)?;
-        meetings::get_meeting(&conn, &meeting_id)?
+        let meeting = meetings::get_meeting(&conn, &meeting_id)?;
+        ensure_meeting_target(
+            &conn,
+            meeting.workspace_id.as_deref(),
+            &meeting.target_file_path,
+        )?;
+        meeting
     };
     files::append_segment_to_file(
         Path::new(&meeting.target_file_path),
@@ -359,10 +391,15 @@ pub async fn meeting_generate_summary(
     app: AppHandle,
     meeting_id: String,
 ) -> Result<MeetingSummaryResult, AppError> {
-    let (meeting, segments, profile, model) = {
+    let (meeting, segments, provider_candidates) = {
         let state = app.state::<DbState>();
         let conn = state.0.lock().map_err(lock_error)?;
         let meeting = meetings::get_meeting(&conn, &meeting_id)?;
+        ensure_meeting_target(
+            &conn,
+            meeting.workspace_id.as_deref(),
+            &meeting.target_file_path,
+        )?;
         let segments = meetings::list_segments(&conn, &meeting_id)?;
         if segments.is_empty() {
             return Err(AppError::new(
@@ -371,35 +408,60 @@ pub async fn meeting_generate_summary(
                 false,
             ));
         }
-        let (profile, model) = summary::resolve_summary_provider(&conn)?;
-        (meeting, segments, profile, model)
+        let provider_candidates = summary::resolve_summary_providers(&conn)?;
+        (meeting, segments, provider_candidates)
     };
-
-    let secret = credentials::get_secret(&app, &profile.id).await?;
-    if secret.is_none() {
-        return Err(AppError::new(
-            "API_AUTH_FAILED",
-            "APIキーが設定されていません。設定画面で登録してください",
-            false,
-        ));
-    }
     let transcript_text = summary::build_transcript_text(&meeting, &segments);
-    let request = http::SummaryRequest {
-        model: model.clone(),
-        system_prompt: summary::system_prompt(),
-        user_content: summary::build_user_content(&meeting, &transcript_text, ""),
-    };
-    let runtime = http::runtime_from_profile(&profile, secret);
-    let output = match http::generate_summary(&runtime, request).await {
-        Ok(output) => output,
-        Err(err) => {
-            let state = app.state::<DbState>();
-            if let Ok(conn) = state.0.lock() {
-                record_summary_usage(&conn, &profile.id, &model, &meeting_id, "error", Some(err.code.clone()));
+    let user_notes = files::read_user_notes(Path::new(&meeting.target_file_path), &meeting.id)?;
+    let user_content = summary::build_user_content(&meeting, &transcript_text, &user_notes);
+    let mut generated = None;
+    let mut last_error = None;
+    for (profile, model) in provider_candidates {
+        let secret = credentials::get_secret(&app, &profile.id).await?;
+        let result = if secret.is_none() {
+            Err(AppError::new(
+                "API_AUTH_FAILED",
+                "APIキーが設定されていません。設定画面で登録してください",
+                false,
+            ))
+        } else {
+            let runtime = http::runtime_from_profile(&profile, secret);
+            http::generate_summary(
+                &runtime,
+                http::SummaryRequest {
+                    model: model.clone(),
+                    system_prompt: summary::system_prompt(),
+                    user_content: user_content.clone(),
+                },
+            )
+            .await
+        };
+        match result {
+            Ok(output) => {
+                generated = Some((output, profile, model));
+                break;
             }
-            return Err(err);
+            Err(err) => {
+                last_error = Some(err.clone());
+                let state = app.state::<DbState>();
+                if let Ok(conn) = state.0.lock() {
+                    record_summary_usage(
+                        &conn,
+                        &profile.id,
+                        &model,
+                        &meeting_id,
+                        "error",
+                        Some(err.code),
+                    );
+                };
+            }
         }
-    };
+    }
+    let (output, profile, model) = generated.ok_or_else(|| {
+        last_error.unwrap_or_else(|| {
+            AppError::new("SUMMARY_NOT_CONFIGURED", "議事録生成Providerを利用できません", false)
+        })
+    })?;
 
     let decision_inputs: Vec<meeting_ai::DecisionInput> = output
         .decisions

@@ -2,6 +2,7 @@ import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
 
 export type TaskPriority = "high" | "medium" | "low";
 export type TaskStatus = "todo" | "in_progress" | "on_hold" | "completed" | "cancelled";
+export type TaskColor = "blue" | "indigo" | "violet" | "pink" | "red" | "orange" | "green" | "teal";
 
 export type Task = {
   id: string;
@@ -10,6 +11,7 @@ export type Task = {
   dueAtUtc: string | null;
   timezone: string;
   priority: TaskPriority;
+  color: TaskColor;
   status: TaskStatus;
   assignee: string | null;
   projectName: string | null;
@@ -61,6 +63,28 @@ export const PRIORITY_LABELS: Record<TaskPriority, string> = {
   high: "高",
   medium: "中",
   low: "低",
+};
+
+export const TASK_COLOR_LABELS: Record<TaskColor, string> = {
+  blue: "青",
+  indigo: "藍",
+  violet: "紫",
+  pink: "桃",
+  red: "赤",
+  orange: "橙",
+  green: "緑",
+  teal: "青緑",
+};
+
+export const TASK_COLOR_VALUES: Record<TaskColor, string> = {
+  blue: "#2563eb",
+  indigo: "#4f46e5",
+  violet: "#7c3aed",
+  pink: "#db2777",
+  red: "#dc2626",
+  orange: "#ea580c",
+  green: "#16a34a",
+  teal: "#0f766e",
 };
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {

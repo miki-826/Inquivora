@@ -1,5 +1,5 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PanePlaceholder } from "../../components/common/PanePlaceholder";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
@@ -13,6 +13,7 @@ import {
   type AudioDevice,
 } from "../../services/meetings";
 import { loadSetting, saveSetting } from "../../services/settings";
+import { getAiDisclosure, type AiDisclosure } from "../../services/providers";
 import { useMeetingStore } from "../../stores/useMeetingStore";
 import { useWorkspaceStore } from "../../stores/useWorkspaceStore";
 import {
@@ -104,6 +105,42 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
   const [loopbackDeviceId, setLoopbackDeviceId] = useState("default");
   const [transcriptionReady, setTranscriptionReady] = useState(true);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [disclosure, setDisclosure] = useState<AiDisclosure | null>(null);
+  const [apiConsent, setApiConsent] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    void getAiDisclosure("transcription.batch").then(setDisclosure).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    titleRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !busy) {
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), select:not([disabled])',
+        ),
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [busy, onClose]);
 
   useEffect(() => {
     let cancelled = false;
@@ -147,12 +184,20 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
     customPath ?? (workspace ? `${workspace.rootPath}\\meetings\\${fileName}` : fileName);
 
   const submit = async () => {
+    if (!workspace) {
+      setLocalError("先にワークスペースを開いてください");
+      return;
+    }
     if (!targetFilePath.trim()) {
       setLocalError("文字起こし先ファイルを指定してください");
       return;
     }
     if (!mic && !loopback) {
       setLocalError("マイクとPC音声の少なくとも一方を有効にしてください");
+      return;
+    }
+    if (disclosure?.mode === "api" && !apiConsent) {
+      setLocalError("外部APIへの送信内容を確認し、同意してください");
       return;
     }
     setLocalError(null);
@@ -174,8 +219,13 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
   };
 
   return (
-    <div className="meeting-dialog__backdrop">
-      <div className="meeting-dialog" role="dialog" aria-label="会議を開始">
+    <div
+      className="meeting-dialog__backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !busy) onClose();
+      }}
+    >
+      <div ref={dialogRef} className="meeting-dialog" role="dialog" aria-modal="true" aria-label="会議を開始">
         <h2 className="meeting-dialog__title">会議を開始</h2>
         {!transcriptionReady && (
           <div className="meeting-setup-hint" role="alert">
@@ -198,6 +248,7 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
         <label className="settings-field">
           タイトル
           <input
+            ref={titleRef}
             type="text"
             value={title}
             placeholder="会議"
@@ -206,11 +257,28 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
         </label>
         <label className="settings-field">
           文字起こし先ファイル
-          <input
-            type="text"
-            value={targetFilePath}
-            onChange={(e) => setCustomPath(e.target.value)}
-          />
+          <span className="meeting-dialog__path-row">
+            <input
+              type="text"
+              value={targetFilePath}
+              onChange={(e) => setCustomPath(e.target.value)}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                void import("@tauri-apps/plugin-dialog").then(async ({ save }) => {
+                  const selected = await save({
+                    title: "会議メモの保存先",
+                    defaultPath: targetFilePath,
+                    filters: [{ name: "Markdown", extensions: ["md"] }],
+                  });
+                  if (typeof selected === "string" && selected) setCustomPath(selected);
+                });
+              }}
+            >
+              選択
+            </button>
+          </span>
         </label>
         <label className="settings-field settings-field--toggle">
           <input type="checkbox" checked={mic} onChange={(e) => setMic(e.target.checked)} />
@@ -246,9 +314,21 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
             {mic && <li>マイクの録音</li>}
             {loopback && <li>PC音声（ループバック）の録音</li>}
             <li>
-              録音チャンクの文字起こし（API Provider設定時は外部送信・未設定時は内蔵Whisperでローカル処理）
+              {disclosure?.mode === "api"
+                ? `${disclosure.sendTarget}を ${disclosure.providerName} / ${disclosure.modelId} へ送信して文字起こし`
+                : "録音チャンクを内蔵Whisperでローカル文字起こし（外部送信なし）"}
             </li>
           </ul>
+          {disclosure?.mode === "api" && (
+            <label className="meeting-dialog__consent">
+              <input
+                type="checkbox"
+                checked={apiConsent}
+                onChange={(event) => setApiConsent(event.target.checked)}
+              />
+              上記のProvider・モデル・送信対象を確認し、外部送信に同意します
+            </label>
+          )}
         </div>
         {localError && (
           <p className="settings-actions__error" role="alert">
@@ -259,7 +339,12 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
           <button type="button" onClick={onClose} disabled={busy}>
             キャンセル
           </button>
-          <button type="button" className="meeting-dialog__start" onClick={() => void submit()} disabled={busy}>
+          <button
+            type="button"
+            className="meeting-dialog__start"
+            onClick={() => void submit()}
+            disabled={busy || !workspace || !transcriptionReady || (disclosure?.mode === "api" && !apiConsent)}
+          >
             {busy ? "開始中…" : "録音を開始"}
           </button>
         </div>
@@ -553,6 +638,12 @@ function AiMeetingPanel() {
   const generating = useMeetingStore((s) => s.generatingSummary);
   const generateSummary = useMeetingStore((s) => s.generateSummary);
   const acceptCandidate = useMeetingStore((s) => s.acceptCandidate);
+  const [disclosure, setDisclosure] = useState<AiDisclosure | null>(null);
+
+  useEffect(() => {
+    if (!summaryAvailable) return;
+    void getAiDisclosure("meeting.summary").then(setDisclosure).catch(() => undefined);
+  }, [summaryAvailable]);
 
   if (!selectedMeetingId) {
     return (
@@ -571,7 +662,12 @@ function AiMeetingPanel() {
           type="button"
           className="ai-panel__generate"
           disabled={!summaryAvailable || generating}
-          onClick={() => void generateSummary(selectedMeetingId)}
+          onClick={() => {
+            const confirmed = window.confirm(
+              `外部AIへ議事録生成を依頼します。\n\nProvider: ${disclosure?.providerName ?? "設定済みProvider"}\nモデル: ${disclosure?.modelId ?? "設定済みモデル"}\n送信対象: ${disclosure?.sendTarget ?? "文字起こしと会議メモ"}\n\n続行しますか？`,
+            );
+            if (confirmed) void generateSummary(selectedMeetingId);
+          }}
         >
           {generating ? "生成中…" : ai.summary ? "再生成" : "議事録を生成"}
         </button>

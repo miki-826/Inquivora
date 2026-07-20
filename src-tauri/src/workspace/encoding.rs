@@ -33,7 +33,7 @@ fn unsupported(detail: impl Into<String>) -> AppError {
 const UTF8_BOM: &[u8] = &[0xEF, 0xBB, 0xBF];
 
 fn decode_utf16(bytes: &[u8], le: bool) -> Result<String, AppError> {
-    if bytes.len() % 2 != 0 {
+    if !bytes.len().is_multiple_of(2) {
         return Err(unsupported("UTF-16のバイト長が不正です"));
     }
     let units: Vec<u16> = bytes
