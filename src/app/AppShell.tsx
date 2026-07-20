@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { Toolbar } from "../components/layout/Toolbar";
 import { VerticalNav } from "../components/layout/VerticalNav";
@@ -30,7 +30,9 @@ export function AppShell() {
       <div className="app-shell__body">
         <VerticalNav />
         <main className="app-shell__main">
-          <Outlet />
+          <Suspense fallback={<div className="app-shell__loading">読み込み中…</div>}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
       <StatusBar />

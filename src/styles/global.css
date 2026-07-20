@@ -718,6 +718,12 @@ button {
   color: var(--color-text-muted, #999);
 }
 
+.app-shell__loading {
+  padding: 24px;
+  font-size: 13px;
+  color: var(--color-text-muted, #999);
+}
+
 .search-page__filters {
   display: flex;
   gap: 6px;
