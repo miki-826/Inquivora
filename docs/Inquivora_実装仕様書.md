@@ -2565,7 +2565,7 @@ jobs:
       - name: Publish release after all assets are ready
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit ${{ github.ref_name }} --draft=false --prerelease
+        run: gh release edit ${{ github.ref_name }} --repo "${{ github.repository }}" --draft=false --prerelease
 ```
 
 実際のSidecarパスとTauri external binary名は実装時に一致させる。
