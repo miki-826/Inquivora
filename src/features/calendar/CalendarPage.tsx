@@ -5,24 +5,11 @@ import interactionPlugin, { Draggable, type EventReceiveArg } from "@fullcalenda
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
-import { ChevronLeft } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
 import { getEvent, type EventPatch } from "../../services/events";
 import { useCalendarStore } from "../../stores/useCalendarStore";
-import {
-  PRIORITY_LABELS,
-  STATUS_LABELS,
-  TASK_COLOR_LABELS,
-  TASK_COLOR_VALUES,
-  TOKYO_TZ,
-  buildDueAtUtc,
-  splitDueAtUtc,
-  type Task,
-  type TaskColor,
-  type TaskPriority,
-  type TaskStatus,
-} from "../tasks/taskModel";
+import { TASK_COLOR_VALUES, TOKYO_TZ, type Task } from "../tasks/taskModel";
 import { buildCalendarInputs, shiftDateString } from "./calendarModel";
 import { EventPanel, type CalendarSelection, type EventDraft } from "./EventPanel";
 import "./calendarEnhancements.css";
@@ -116,108 +103,6 @@ function UnscheduledTasks({ tasks }: { tasks: Task[] }) {
   );
 }
 
-function CalendarTaskQuickEditor({ task, onBack }: { task: Task; onBack: () => void }) {
-  const updateTask = useCalendarStore((s) => s.updateTask);
-  const initial = splitDueAtUtc(task.dueAtUtc);
-  const [dueDate, setDueDate] = useState(initial.date);
-  const [dueTime, setDueTime] = useState(initial.time);
-
-  const commitDue = (date: string, time: string) => {
-    setDueDate(date);
-    setDueTime(time);
-    void updateTask(task.id, { dueAtUtc: buildDueAtUtc(date, time) });
-  };
-
-  return (
-    <div className="calendar-task-editor">
-      <button type="button" className="calendar-task-editor__back" onClick={onBack}>
-        <ChevronLeft size={15} aria-hidden />
-        未予定タスクへ戻る
-      </button>
-      <h2 className="pane-title">タスクをクイック編集</h2>
-      <input
-        className="calendar-task-editor__title"
-        type="text"
-        defaultValue={task.title}
-        aria-label="タスク名"
-        onBlur={(event) => {
-          const title = event.currentTarget.value.trim();
-          if (title && title !== task.title) void updateTask(task.id, { title });
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") event.currentTarget.blur();
-        }}
-      />
-      <div className="calendar-task-editor__grid">
-        <label>
-          状態
-          <select
-            value={task.status}
-            onChange={(event) =>
-              void updateTask(task.id, { status: event.target.value as TaskStatus })
-            }
-          >
-            {(Object.keys(STATUS_LABELS) as TaskStatus[]).map((status) => (
-              <option key={status} value={status}>
-                {STATUS_LABELS[status]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          優先度
-          <select
-            value={task.priority}
-            onChange={(event) =>
-              void updateTask(task.id, { priority: event.target.value as TaskPriority })
-            }
-          >
-            {(Object.keys(PRIORITY_LABELS) as TaskPriority[]).map((priority) => (
-              <option key={priority} value={priority}>
-                {PRIORITY_LABELS[priority]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          期日
-          <input
-            type="date"
-            value={dueDate}
-            onChange={(event) =>
-              commitDue(event.target.value, event.target.value ? dueTime : "")
-            }
-          />
-        </label>
-        <label>
-          時刻
-          <input
-            type="time"
-            value={dueTime}
-            disabled={!dueDate}
-            onChange={(event) => commitDue(dueDate, event.target.value)}
-          />
-        </label>
-      </div>
-      <fieldset className="task-color-picker calendar-task-editor__colors">
-        <legend>カレンダーの色</legend>
-        {(Object.keys(TASK_COLOR_LABELS) as TaskColor[]).map((color) => (
-          <label key={color} title={TASK_COLOR_LABELS[color]}>
-            <input
-              type="radio"
-              name={`calendar-task-color-${task.id}`}
-              checked={task.color === color}
-              onChange={() => void updateTask(task.id, { color })}
-            />
-            <span style={{ backgroundColor: TASK_COLOR_VALUES[color] }} aria-hidden />
-            <span className="sr-only">{TASK_COLOR_LABELS[color]}</span>
-          </label>
-        ))}
-      </fieldset>
-    </div>
-  );
-}
-
 export function CalendarPage() {
   const events = useCalendarStore((s) => s.events);
   const tasks = useCalendarStore((s) => s.tasks);
@@ -297,22 +182,9 @@ export function CalendarPage() {
     if (!ok) info.revert();
   };
 
-  const selectedTask =
-    selection?.type === "task" ? tasks.find((task) => task.id === selection.id) : undefined;
-
   return (
     <ThreePaneLayout
-      left={
-        selectedTask ? (
-          <CalendarTaskQuickEditor
-            key={`${selectedTask.id}:${selectedTask.dueAtUtc ?? "none"}`}
-            task={selectedTask}
-            onBack={() => setSelection(null)}
-          />
-        ) : (
-          <UnscheduledTasks tasks={tasks} />
-        )
-      }
+      left={<UnscheduledTasks tasks={tasks} />}
       right={<EventPanel selection={selection} onClose={() => setSelection(null)} />}
       leftLabel="タスク設定"
       rightLabel="予定詳細"

@@ -10,11 +10,18 @@ import { useTaskStore } from "../../stores/useTaskStore";
 import {
   PRIORITY_LABELS,
   STATUS_LABELS,
+  TASK_COLOR_LABELS,
+  TASK_COLOR_VALUES,
   TOKYO_TZ,
-  formatDueLabel,
+  buildDueAtUtc,
+  splitDueAtUtc,
   tokyoDateString,
+  type TaskColor,
+  type TaskPriority,
+  type TaskStatus,
 } from "../tasks/taskModel";
 import { formatEventRange, shiftDateString, type EventRecord } from "./calendarModel";
+import "../tasks/taskColors.css";
 
 export type EventDraft = {
   title: string;
@@ -208,23 +215,106 @@ function EventForm({
   );
 }
 
-function TaskSummary({ taskId, onClose }: { taskId: string; onClose: () => void }) {
+/// カレンダーで選択したタスクを、この予定詳細ペイン内で直接編集する。
+function CalendarTaskEditor({ taskId, onClose }: { taskId: string; onClose: () => void }) {
   const task = useCalendarStore((s) => s.tasks.find((t) => t.id === taskId));
+  const updateTask = useCalendarStore((s) => s.updateTask);
   const selectTask = useTaskStore((s) => s.select);
   const navigate = useNavigate();
+  const initial = splitDueAtUtc(task?.dueAtUtc ?? null);
+  const [dueDate, setDueDate] = useState(initial.date);
+  const [dueTime, setDueTime] = useState(initial.time);
 
   if (!task) {
     return <PanePlaceholder title="タスク" description="タスクが見つかりません" />;
   }
+
+  const commitDue = (date: string, time: string) => {
+    setDueDate(date);
+    setDueTime(time);
+    void updateTask(task.id, { dueAtUtc: buildDueAtUtc(date, time) });
+  };
+
   return (
-    <div className="event-panel__task">
-      <h2 className="pane-title">タスク</h2>
-      <p className="event-panel__task-title">{task.title}</p>
-      {task.dueAtUtc && <p>期日: {formatDueLabel(task.dueAtUtc, new Date())}</p>}
-      <p>
-        優先度: {PRIORITY_LABELS[task.priority]} ／ 状態: {STATUS_LABELS[task.status]}
-      </p>
-      {task.description && <p className="event-panel__task-memo">{task.description}</p>}
+    <div className="calendar-task-editor">
+      <h2 className="pane-title">タスクを編集</h2>
+      <input
+        className="calendar-task-editor__title"
+        type="text"
+        defaultValue={task.title}
+        aria-label="タスク名"
+        onBlur={(event) => {
+          const title = event.currentTarget.value.trim();
+          if (title && title !== task.title) void updateTask(task.id, { title });
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") event.currentTarget.blur();
+        }}
+      />
+      <div className="calendar-task-editor__grid">
+        <label>
+          状態
+          <select
+            value={task.status}
+            onChange={(event) =>
+              void updateTask(task.id, { status: event.target.value as TaskStatus })
+            }
+          >
+            {(Object.keys(STATUS_LABELS) as TaskStatus[]).map((status) => (
+              <option key={status} value={status}>
+                {STATUS_LABELS[status]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          優先度
+          <select
+            value={task.priority}
+            onChange={(event) =>
+              void updateTask(task.id, { priority: event.target.value as TaskPriority })
+            }
+          >
+            {(Object.keys(PRIORITY_LABELS) as TaskPriority[]).map((priority) => (
+              <option key={priority} value={priority}>
+                {PRIORITY_LABELS[priority]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          期日
+          <input
+            type="date"
+            value={dueDate}
+            onChange={(event) => commitDue(event.target.value, event.target.value ? dueTime : "")}
+          />
+        </label>
+        <label>
+          時刻
+          <input
+            type="time"
+            value={dueTime}
+            disabled={!dueDate}
+            onChange={(event) => commitDue(dueDate, event.target.value)}
+          />
+        </label>
+      </div>
+      <fieldset className="task-color-picker calendar-task-editor__colors">
+        <legend>カレンダーの色</legend>
+        {(Object.keys(TASK_COLOR_LABELS) as TaskColor[]).map((color) => (
+          <label key={color} title={TASK_COLOR_LABELS[color]}>
+            <input
+              type="radio"
+              name={`calendar-task-color-${task.id}`}
+              checked={task.color === color}
+              onChange={() => void updateTask(task.id, { color })}
+            />
+            <span style={{ backgroundColor: TASK_COLOR_VALUES[color] }} aria-hidden />
+            <span className="sr-only">{TASK_COLOR_LABELS[color]}</span>
+          </label>
+        ))}
+      </fieldset>
       <div className="event-form__actions">
         <button
           type="button"
@@ -265,7 +355,9 @@ export function EventPanel({
   }
 
   if (selection.type === "task") {
-    return <TaskSummary taskId={selection.id} onClose={onClose} />;
+    return (
+      <CalendarTaskEditor key={selection.id} taskId={selection.id} onClose={onClose} />
+    );
   }
 
   if (selection.type === "draft") {

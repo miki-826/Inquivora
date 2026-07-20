@@ -387,6 +387,8 @@ input[type="radio"] {
   min-height: 0;
   flex-direction: column;
   overflow: auto;
+  /* 下部にフローティング配置される開閉トグルと中身のボタンが重ならないよう余白を確保する */
+  padding-bottom: 46px;
 }
 
 .three-pane__left {

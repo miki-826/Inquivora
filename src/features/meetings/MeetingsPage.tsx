@@ -1,6 +1,6 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Check, Clipboard, Download, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PanePlaceholder } from "../../components/common/PanePlaceholder";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
@@ -405,8 +405,18 @@ function LevelMeter({ label, value }: { label: string; value: number }) {
   );
 }
 
-function ActiveMeetingView({ meeting }: { meeting: Meeting }) {
+/// 録音レベルは毎秒更新されるため、セグメント一覧の再描画を避けるよう独立して購読する。
+function MeetingLevels() {
   const levels = useMeetingStore((s) => s.levels);
+  return (
+    <div className="meeting-active__levels">
+      <LevelMeter label="マイク" value={levels.mic} />
+      <LevelMeter label="PC音声" value={levels.loopback} />
+    </div>
+  );
+}
+
+function ActiveMeetingView({ meeting }: { meeting: Meeting }) {
   const segments = useMeetingStore((s) => s.segments);
   const pause = useMeetingStore((s) => s.pause);
   const resume = useMeetingStore((s) => s.resume);
@@ -422,10 +432,7 @@ function ActiveMeetingView({ meeting }: { meeting: Meeting }) {
         </span>
       </div>
       <p className="meeting-active__file">{meeting.targetFilePath}</p>
-      <div className="meeting-active__levels">
-        <LevelMeter label="マイク" value={levels.mic} />
-        <LevelMeter label="PC音声" value={levels.loopback} />
-      </div>
+      <MeetingLevels />
       <div className="meeting-active__controls">
         {meeting.status === "recording" ? (
           <button type="button" onClick={() => void pause()} disabled={busy}>
@@ -460,46 +467,52 @@ function playSegmentChunk(path: string) {
   void segmentAudio.play().catch(() => undefined);
 }
 
-function SegmentList({ segments }: { segments: TranscriptSegment[] }) {
+/// 確定済みセグメントは変化しないため、新規追加時に既存項目を再描画しないようメモ化する。
+const SegmentItem = memo(function SegmentItem({ segment }: { segment: TranscriptSegment }) {
+  return (
+    <li
+      className={`meeting-segment meeting-segment--${segment.source === "mic" ? "mic" : "loopback"}`}
+    >
+      <div className="meeting-segment__header">
+        <span
+          className={`meeting-segment__avatar meeting-segment__avatar--${
+            segment.source === "mic" ? "mic" : "loopback"
+          }`}
+          aria-hidden="true"
+        >
+          {segment.source === "mic" ? "🎤" : "🔊"}
+        </span>
+        <span className="meeting-segment__speaker">{segment.speakerLabel}</span>
+        <span className="meeting-segment__time">{segmentTimeLabel(segment)}</span>
+        {segment.audioChunkPath && (
+          <button
+            type="button"
+            className="meeting-segment__play"
+            aria-label="この発言の音声を再生"
+            title="この発言を再生"
+            onClick={() => playSegmentChunk(segment.audioChunkPath!)}
+          >
+            ▶
+          </button>
+        )}
+      </div>
+      <p className="meeting-segment__text">{segment.text}</p>
+    </li>
+  );
+});
+
+const SegmentList = memo(function SegmentList({ segments }: { segments: TranscriptSegment[] }) {
   if (segments.length === 0) {
     return <p className="meeting-segments__empty">確定したセグメントはまだありません</p>;
   }
   return (
     <ul className="meeting-segments">
       {segments.map((segment) => (
-        <li
-          key={segment.id}
-          className={`meeting-segment meeting-segment--${segment.source === "mic" ? "mic" : "loopback"}`}
-        >
-          <div className="meeting-segment__header">
-            <span
-              className={`meeting-segment__avatar meeting-segment__avatar--${
-                segment.source === "mic" ? "mic" : "loopback"
-              }`}
-              aria-hidden="true"
-            >
-              {segment.source === "mic" ? "🎤" : "🔊"}
-            </span>
-            <span className="meeting-segment__speaker">{segment.speakerLabel}</span>
-            <span className="meeting-segment__time">{segmentTimeLabel(segment)}</span>
-            {segment.audioChunkPath && (
-              <button
-                type="button"
-                className="meeting-segment__play"
-                aria-label="この発言の音声を再生"
-                title="この発言を再生"
-                onClick={() => playSegmentChunk(segment.audioChunkPath!)}
-              >
-                ▶
-              </button>
-            )}
-          </div>
-          <p className="meeting-segment__text">{segment.text}</p>
-        </li>
+        <SegmentItem key={segment.id} segment={segment} />
       ))}
     </ul>
   );
-}
+});
 
 function MeetingList() {
   const meetings = useMeetingStore((s) => s.meetings);
@@ -881,6 +894,7 @@ function AiMeetingPanel() {
 
 export function MeetingsPage() {
   const activeMeeting = useMeetingStore((s) => s.activeMeeting);
+  const selectedMeetingId = useMeetingStore((s) => s.selectedMeetingId);
   const error = useMeetingStore((s) => s.error);
   const clearError = useMeetingStore((s) => s.clearError);
   const loadMeetings = useMeetingStore((s) => s.loadMeetings);
@@ -913,7 +927,12 @@ export function MeetingsPage() {
             </button>
           </div>
         )}
-        {activeMeeting ? <ActiveMeetingView meeting={activeMeeting} /> : <SelectedMeetingView />}
+        {/* 表示と要約対象の不一致を防ぐため、選択中の会議が録音中のときだけ録音ビューを出す */}
+        {activeMeeting && activeMeeting.id === selectedMeetingId ? (
+          <ActiveMeetingView meeting={activeMeeting} />
+        ) : (
+          <SelectedMeetingView />
+        )}
         {dialogOpen && <MeetingStartDialog onClose={() => setDialogOpen(false)} />}
       </div>
     </ThreePaneLayout>

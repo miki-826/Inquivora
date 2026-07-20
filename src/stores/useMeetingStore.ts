@@ -79,6 +79,10 @@ export const useMeetingStore = create<MeetingStore>((set, get) => ({
       const list = await meetings.listMeetings();
       const active = list.find((m) => m.status === "recording" || m.status === "paused") ?? null;
       set({ meetings: list, activeMeeting: active });
+      // 録音中の会議があり未選択なら、表示と要約対象がずれないよう選択を合わせる。
+      if (active && !get().selectedMeetingId) {
+        await get().selectMeeting(active.id);
+      }
     } catch (error) {
       set({ error: messageOf(error) });
     }
