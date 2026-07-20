@@ -109,3 +109,8 @@ jobs:
             SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish release after all artifacts succeed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit ${{ github.ref_name }} --draft=false --prerelease
