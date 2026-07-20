@@ -1,12 +1,14 @@
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PanePlaceholder } from "../../components/common/PanePlaceholder";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
 import {
-  exportMeetingRecording,
+  deleteMeetingAudio,
   isTranscriptionReady,
   listAudioDevices,
   meetingHasAudio,
+  prepareFullRecording,
   revealMeetingAudio,
   type AudioDevice,
 } from "../../services/meetings";
@@ -323,6 +325,16 @@ function ActiveMeetingView({ meeting }: { meeting: Meeting }) {
   );
 }
 
+let segmentAudio: HTMLAudioElement | null = null;
+
+function playSegmentChunk(path: string) {
+  if (segmentAudio) {
+    segmentAudio.pause();
+  }
+  segmentAudio = new Audio(convertFileSrc(path));
+  void segmentAudio.play().catch(() => undefined);
+}
+
 function SegmentList({ segments }: { segments: TranscriptSegment[] }) {
   if (segments.length === 0) {
     return <p className="meeting-segments__empty">確定したセグメントはまだありません</p>;
@@ -345,6 +357,17 @@ function SegmentList({ segments }: { segments: TranscriptSegment[] }) {
             </span>
             <span className="meeting-segment__speaker">{segment.speakerLabel}</span>
             <span className="meeting-segment__time">{segmentTimeLabel(segment)}</span>
+            {segment.audioChunkPath && (
+              <button
+                type="button"
+                className="meeting-segment__play"
+                aria-label="この発言の音声を再生"
+                title="この発言を再生"
+                onClick={() => playSegmentChunk(segment.audioChunkPath!)}
+              >
+                ▶
+              </button>
+            )}
           </div>
           <p className="meeting-segment__text">{segment.text}</p>
         </li>
@@ -413,6 +436,7 @@ function MeetingList() {
 
 function RecordingActions({ meetingId }: { meetingId: string }) {
   const [hasAudio, setHasAudio] = useState(false);
+  const [audioSrc, setAudioSrc] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -420,7 +444,10 @@ function RecordingActions({ meetingId }: { meetingId: string }) {
     let cancelled = false;
     void meetingHasAudio(meetingId)
       .then((has) => {
-        if (!cancelled) setHasAudio(has);
+        if (!cancelled) {
+          setHasAudio(has);
+          setAudioSrc(null);
+        }
       })
       .catch(() => undefined);
     return () => {
@@ -432,13 +459,30 @@ function RecordingActions({ meetingId }: { meetingId: string }) {
     return null;
   }
 
-  const exportAndReveal = async () => {
+  const playFull = async () => {
     setBusy(true);
     setMessage(null);
     try {
-      const files = await exportMeetingRecording(meetingId);
-      setMessage(`録音を書き出しました（${files.length}ファイル）`);
-      await revealMeetingAudio(meetingId);
+      const path = await prepareFullRecording(meetingId);
+      // キャッシュ回避のためクエリを付与
+      setAudioSrc(`${convertFileSrc(path)}?t=${Date.now()}`);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!window.confirm("この会議の録音を削除しますか？元に戻せません。")) {
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      await deleteMeetingAudio(meetingId);
+      setHasAudio(false);
+      setAudioSrc(null);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : String(err));
     } finally {
@@ -449,17 +493,25 @@ function RecordingActions({ meetingId }: { meetingId: string }) {
   return (
     <div className="meeting-recording">
       <h3 className="meeting-recording__title">録音</h3>
-      <p className="meeting-recording__note">
-        この会議の録音（マイク・PC音声）が保存されています。書き出すと音源ごとに1つのWAVへまとめ、フォルダを開きます。
-      </p>
       <div className="meeting-recording__actions">
-        <button type="button" disabled={busy} onClick={() => void exportAndReveal()}>
-          {busy ? "書き出し中…" : "録音を書き出して開く"}
+        <button type="button" disabled={busy} onClick={() => void playFull()}>
+          {busy ? "準備中…" : "▶ 全体を再生"}
         </button>
         <button type="button" onClick={() => void revealMeetingAudio(meetingId)}>
-          録音フォルダを開く
+          フォルダを開く
+        </button>
+        <button
+          type="button"
+          className="provider-card__danger"
+          disabled={busy}
+          onClick={() => void remove()}
+        >
+          録音を削除
         </button>
       </div>
+      {audioSrc && (
+        <audio className="meeting-recording__player" src={audioSrc} controls autoPlay />
+      )}
       {message && <p className="meeting-recording__message">{message}</p>}
     </div>
   );

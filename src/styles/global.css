@@ -627,6 +627,97 @@ button {
   color: var(--color-text-muted, #888);
 }
 
+.meeting-recording__player {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  height: 34px;
+}
+
+.meeting-segment__play {
+  margin-left: auto;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.ws-meeting-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.ws-meeting-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ws-meeting-panel__title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.ws-meeting-panel__note {
+  font-size: 12px;
+  color: var(--color-text-muted, #888);
+  line-height: 1.6;
+}
+
+.ws-meeting-panel__start {
+  align-self: flex-start;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 13px;
+}
+
+.ws-meeting-panel__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ws-meeting-panel__controls button {
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border, #ddd);
+}
+
+.ws-meeting-panel__segments {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.ws-meeting-panel__segment {
+  font-size: 12px;
+  line-height: 1.5;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--color-border-subtle, rgba(128, 128, 128, 0.15));
+}
+
+.ws-meeting-panel__seg-time {
+  color: var(--color-text-muted, #999);
+  margin-right: 6px;
+  white-space: nowrap;
+}
+
+.ws-meeting-panel__empty {
+  font-size: 12px;
+  color: var(--color-text-muted, #999);
+}
+
 .search-page__filters {
   display: flex;
   gap: 6px;

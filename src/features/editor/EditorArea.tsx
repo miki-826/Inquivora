@@ -231,6 +231,7 @@ function ActivePane() {
               automaticLayout: true,
               renderWhitespace: "none",
               fontSize: 14,
+              mouseWheelZoom: true,
             }}
           />
         </div>

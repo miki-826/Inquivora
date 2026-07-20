@@ -107,6 +107,14 @@ export async function exportMeetingRecording(meetingId: string): Promise<string[
   return Array.isArray(value) ? (value as string[]) : [];
 }
 
+export async function prepareFullRecording(meetingId: string): Promise<string> {
+  return (await invoke("meeting_prepare_full_recording", { meetingId })) as string;
+}
+
+export async function deleteMeetingAudio(meetingId: string): Promise<void> {
+  await invoke("meeting_delete_audio", { meetingId });
+}
+
 export async function revealMeetingAudio(meetingId: string): Promise<void> {
   await invoke("meeting_reveal_audio", { meetingId });
 }
