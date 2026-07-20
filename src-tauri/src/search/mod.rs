@@ -134,9 +134,9 @@ pub fn sync_path(conn: &Connection, abs_path: &str) -> Result<(), AppError> {
     Ok(())
 }
 
-/// §15.3 索引を全再構築する。DBロックを取らずにファイルを収集し、書込は1トランザクションで行う。
-/// `file_docs` は `collect_workspace_docs` でロック外に用意したファイル索引。
-pub fn reindex(conn: &mut Connection, file_docs: Vec<SearchDocInput>) -> Result<usize, AppError> {
+/// 索引全体をクリアし、DB由来（タスク/予定/会議）を1トランザクションで再登録する（§15.3）。
+/// ファイルは別途 write_file_docs でバッチ登録する（省メモリのため一度に全読みしない）。
+pub fn reindex_entities(conn: &mut Connection) -> Result<usize, AppError> {
     let mut docs: Vec<SearchDocInput> = Vec::new();
     for task in tasks::list_tasks(conn, &TaskFilter::default(), chrono::Utc::now())? {
         docs.push(task_doc(&task));
@@ -148,8 +148,6 @@ pub fn reindex(conn: &mut Connection, file_docs: Vec<SearchDocInput>) -> Result<
         let segments = meetings::list_segments(conn, &meeting.id)?;
         docs.push(meeting_doc(&meeting, &segments));
     }
-    docs.extend(file_docs);
-
     let tx = conn.transaction()?;
     for entity_type in [TYPE_FILE, TYPE_MEETING, TYPE_TASK, TYPE_EVENT] {
         search::delete_by_type(&tx, entity_type)?;
@@ -161,9 +159,24 @@ pub fn reindex(conn: &mut Connection, file_docs: Vec<SearchDocInput>) -> Result<
     Ok(docs.len())
 }
 
+/// ファイル索引ドキュメントのバッチを1トランザクションで登録する。
+pub fn write_file_docs(conn: &mut Connection, docs: &[SearchDocInput]) -> Result<(), AppError> {
+    if docs.is_empty() {
+        return Ok(());
+    }
+    let tx = conn.transaction()?;
+    for doc in docs {
+        search::upsert_document(&tx, doc)?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
 const IGNORED_DIRS: &[&str] = &["node_modules", ".git", "target", "dist", ".venv", "__pycache__"];
 const MAX_DEPTH: usize = 12;
 const MAX_INDEX_BYTES: u64 = 2 * 1024 * 1024;
+/// 一度に読み込む索引対象ファイル数。省メモリのためバッチ単位で処理する。
+pub const INDEX_BATCH: usize = 128;
 
 fn all_events(conn: &Connection) -> Result<Vec<EventRecord>, AppError> {
     use crate::database::events;
@@ -171,14 +184,14 @@ fn all_events(conn: &Connection) -> Result<Vec<EventRecord>, AppError> {
     events::list_events_in_range(conn, "0000-01-01T00:00:00Z", "9999-12-31T23:59:59Z")
 }
 
-/// DBロックを取らずにworkspace_root配下のテキストファイルを索引ドキュメントへ収集する。
-pub fn collect_workspace_docs(root: &Path) -> Vec<SearchDocInput> {
-    let mut docs = Vec::new();
-    collect_files_under(root, 0, &mut docs);
-    docs
+/// DBロックを取らずにworkspace_root配下の索引対象ファイルのパスだけを収集する（内容は読まない）。
+pub fn collect_workspace_file_paths(root: &Path) -> Vec<std::path::PathBuf> {
+    let mut paths = Vec::new();
+    collect_paths_under(root, 0, &mut paths);
+    paths
 }
 
-fn collect_files_under(dir: &Path, depth: usize, out: &mut Vec<SearchDocInput>) {
+fn collect_paths_under(dir: &Path, depth: usize, out: &mut Vec<std::path::PathBuf>) {
     if depth > MAX_DEPTH {
         return;
     }
@@ -197,14 +210,27 @@ fn collect_files_under(dir: &Path, depth: usize, out: &mut Vec<SearchDocInput>) 
             Err(_) => continue,
         };
         if file_type.is_dir() {
-            collect_files_under(&path, depth + 1, out);
+            collect_paths_under(&path, depth + 1, out);
         } else if file_type.is_file() && should_index_file(&path) {
-            if let Ok(file) = ops::read_text_file(&path) {
-                let abs = path.to_string_lossy().into_owned();
-                out.push(file_doc(&abs, &name, &file.content));
-            }
+            out.push(path);
         }
     }
+}
+
+/// DBロックを取らずに、指定パス群のテキストを読み索引ドキュメントへ変換する（バッチ単位で呼ぶ）。
+pub fn read_file_docs(paths: &[std::path::PathBuf]) -> Vec<SearchDocInput> {
+    let mut docs = Vec::with_capacity(paths.len());
+    for path in paths {
+        if let Ok(file) = ops::read_text_file(path) {
+            let abs = path.to_string_lossy().into_owned();
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            docs.push(file_doc(&abs, &name, &file.content));
+        }
+    }
+    docs
 }
 
 fn should_index_file(path: &Path) -> bool {
@@ -326,32 +352,33 @@ mod tests {
             },
         )
         .unwrap();
-        let count = reindex(&mut conn, Vec::new()).unwrap();
+        let count = reindex_entities(&mut conn).unwrap();
         assert!(count >= 2, "少なくともタスクと会議が索引される: {count}");
         assert_eq!(search(&conn, "在庫を数える", &[], 20, 0).unwrap().len(), 1);
         assert_eq!(search(&conn, "棚卸し会議", &[], 20, 0).unwrap()[0].entity_type, "meeting");
     }
 
     #[test]
-    fn ファイル収集は無視ディレクトリと非テキストを除外する() {
+    fn ファイルパス収集は無視ディレクトリと非テキストを除外する() {
         let ws = tempfile::tempdir().unwrap();
         std::fs::write(ws.path().join("メモ.md"), "# 見出し\n横断的な検索対象の本文\n").unwrap();
         std::fs::write(ws.path().join("画像.png"), [0u8, 1, 2, 3]).unwrap();
         std::fs::create_dir(ws.path().join("node_modules")).unwrap();
         std::fs::write(ws.path().join("node_modules").join("ignored.md"), "無視される本文").unwrap();
-        let docs = collect_workspace_docs(ws.path());
-        assert_eq!(docs.len(), 1);
-        assert_eq!(docs[0].entity_type, "file");
-        assert!(docs[0].body.contains("横断的な検索対象"));
+        let paths = collect_workspace_file_paths(ws.path());
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("メモ.md"));
     }
 
     #[test]
-    fn 収集したファイルドキュメントで検索できる() {
+    fn バッチ読込と登録でファイルを検索できる() {
         let (_dir, mut conn) = temp_conn();
+        reindex_entities(&mut conn).unwrap();
         let ws = tempfile::tempdir().unwrap();
         std::fs::write(ws.path().join("メモ.md"), "横断的な検索対象の本文\n").unwrap();
-        let file_docs = collect_workspace_docs(ws.path());
-        reindex(&mut conn, file_docs).unwrap();
+        let paths = collect_workspace_file_paths(ws.path());
+        let docs = read_file_docs(&paths);
+        write_file_docs(&mut conn, &docs).unwrap();
         assert_eq!(search(&conn, "横断的な検索対象", &[], 20, 0).unwrap().len(), 1);
     }
 

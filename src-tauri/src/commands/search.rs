@@ -37,14 +37,23 @@ pub fn search_reindex_workspace(app: AppHandle, ws: State<'_, WorkspaceState>) -
     let handle = app.clone();
     std::thread::spawn(move || {
         let _ = handle.emit("search:index-started", ());
-        let file_docs = root
-            .as_deref()
-            .map(indexer::collect_workspace_docs)
-            .unwrap_or_default();
-        let count = match handle.state::<DbState>().0.lock() {
-            Ok(mut conn) => indexer::reindex(&mut conn, file_docs).unwrap_or(0),
-            Err(_) => 0,
-        };
+        let mut count = 0usize;
+        // DB由来（タスク/予定/会議）と全索引のクリアは1トランザクションで短時間ロック
+        if let Ok(mut conn) = handle.state::<DbState>().0.lock() {
+            count += indexer::reindex_entities(&mut conn).unwrap_or(0);
+        }
+        // ファイルはパスだけ収集し、バッチ単位で「ロック外読み込み→短時間ロック書込」を繰り返す。
+        // 一度に全ファイルをメモリへ載せないため省メモリ。
+        if let Some(root) = root {
+            let paths = indexer::collect_workspace_file_paths(&root);
+            for batch in paths.chunks(indexer::INDEX_BATCH) {
+                let docs = indexer::read_file_docs(batch);
+                if let Ok(mut conn) = handle.state::<DbState>().0.lock() {
+                    let _ = indexer::write_file_docs(&mut conn, &docs);
+                }
+                count += docs.len();
+            }
+        }
         let _ = handle.emit("search:index-done", count);
     });
     Ok(())

@@ -91,6 +91,7 @@ fn merge_chunks(chunks: &[Chunk]) -> Vec<i16> {
 }
 
 /// 複数音源のチャンクを、各チャンクの開始時刻に配置して加算合成する（全体を1トラックで聴く用）。
+/// 省メモリのためi16バッファ上で飽和加算する（8GB級のPCでも通し録音を扱えるように）。
 fn mix_chunks(chunks: &[Chunk]) -> Vec<i16> {
     let sample_at = |ms: i64| (ms.max(0) * SAMPLE_RATE as i64 / 1000) as usize;
     let total = chunks
@@ -98,18 +99,16 @@ fn mix_chunks(chunks: &[Chunk]) -> Vec<i16> {
         .map(|c| sample_at(c.start_ms) + c.samples.len())
         .max()
         .unwrap_or(0);
-    let mut acc = vec![0i32; total];
+    let mut acc = vec![0i16; total];
     for chunk in chunks {
         let offset = sample_at(chunk.start_ms);
         for (i, &sample) in chunk.samples.iter().enumerate() {
             if let Some(slot) = acc.get_mut(offset + i) {
-                *slot += sample as i32;
+                *slot = slot.saturating_add(sample);
             }
         }
     }
-    acc.iter()
-        .map(|&v| v.clamp(i16::MIN as i32, i16::MAX as i32) as i16)
-        .collect()
+    acc
 }
 
 fn load_chunks(segments: &[TranscriptSegment], source: Option<&str>) -> Vec<Chunk> {
@@ -138,7 +137,7 @@ fn load_chunks(segments: &[TranscriptSegment], source: Option<&str>) -> Vec<Chun
     chunks
 }
 
-const MAX_MIX_SAMPLES: usize = 3 * 60 * 60 * SAMPLE_RATE as usize;
+const MAX_MIX_SAMPLES: usize = 90 * 60 * SAMPLE_RATE as usize;
 
 fn no_audio_error() -> AppError {
     AppError::new(
