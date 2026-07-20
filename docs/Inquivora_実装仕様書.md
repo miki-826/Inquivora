@@ -2398,7 +2398,7 @@ v0.1.0タグ作成・push
         ↓
 GitHub ActionsがWindowsビルド
         ↓
-Artifact / Draft Releaseを生成
+Artifact / Pre-releaseを生成してRelease一覧へ公開
 ```
 
 ## 28.4 Preflight検査
@@ -2481,6 +2481,8 @@ git push release v0.1.0
 11. ArtifactへセットアップEXEを保存
 12. GitHub Draft ReleaseへセットアップEXEを添付
 13. ビルド元のGit SHA、バージョン、SHA-256をRelease Notesへ記録
+14. 全成果物の添付成功後、Pre-releaseとしてRelease一覧へ自動公開
+15. 既存Draftの公開が必要な場合は`workflow_dispatch`へタグを指定し、Actionsから公開
 
 ## 28.9 GitHub Actions Workflow例
 
@@ -2559,6 +2561,11 @@ jobs:
             src-tauri/target/release/bundle/msi/*.msi
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish release after all assets are ready
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit ${{ github.ref_name }} --draft=false --prerelease
 ```
 
 実際のSidecarパスとTauri external binary名は実装時に一致させる。
@@ -2664,8 +2671,8 @@ v* tag push:
 ## 29.3 ArtifactとRelease
 
 - CI検証用成果物はGitHub Actions Artifactへ保存する。
-- 正式候補はDraft Releaseへ添付する。
-- 動作確認後にDraft Releaseを手動でPublishする。
+- 正式候補はDraft Releaseへ添付し、成果物とSHA-256の添付完了後にActionsからPre-releaseとして自動公開する。
+- 途中ステップが失敗した場合はDraftのまま保持し、Release一覧へ不完全な成果物を公開しない。
 - ReleaseへGit SHAとファイルハッシュを記録する。
 - 同じバージョン番号の成果物を別コミットから作り直さない。
 
@@ -2839,7 +2846,7 @@ EPIC-09 GitHub Release Pipeline
   #83 禁止ファイル・秘密情報検査
   #84 GitHub release remote・SHA検証
   #85 Windows GitHub Actions Workflow
-  #86 Artifact・Draft Release
+  #86 Artifact・Pre-release自動公開
   #87 Code Signing・Updater Signing
 ```
 
@@ -2855,7 +2862,7 @@ EPIC-09 GitHub Release Pipeline
 - [ ] 指定GitHubへのpush後、remote SHAとlocal HEADの一致を検証できる
 - [ ] remote SHAが一致しない場合、タグ作成とEXE生成を行わない
 - [ ] `v*`タグからGitHub ActionsがセットアップEXEを生成する
-- [ ] ArtifactとDraft Releaseへ同じ成果物を保存できる
+- [ ] ArtifactとReleaseへ同じ成果物を保存し、全ステップ成功後にPre-releaseを自動公開できる
 - [ ] Release NotesへGit SHAとSHA-256を記録できる
 - [ ] `Inquivora_0.1.0_x64-setup.exe`からインストールできる
 - [ ] スタートメニューから起動できる
