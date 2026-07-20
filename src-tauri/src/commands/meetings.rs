@@ -17,6 +17,8 @@ use crate::meeting::summary::{self, MEETING_SUMMARY_FEATURE};
 use crate::meeting::{audio, files, markdown, session};
 use crate::search as indexer;
 use crate::whisper;
+use crate::workspace::encoding::{FileEncoding, LineEnding};
+use crate::workspace::ops::write_text_atomic;
 use crate::workspace::paths::ensure_within_workspace;
 use crate::DbState;
 
@@ -265,6 +267,44 @@ pub fn meeting_list_segments(
     meetings::list_segments(&conn, &meeting_id)
 }
 
+/// 保存済み会議を、利用者が選んだ任意の場所へMarkdownで書き出す。
+#[tauri::command]
+pub fn meeting_export_markdown(
+    state: State<'_, DbState>,
+    meeting_id: String,
+    target_path: String,
+    kind: String,
+) -> Result<String, AppError> {
+    let target = Path::new(target_path.trim());
+    let is_markdown = target.extension().and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case("md"));
+    if !target.is_absolute() || !is_markdown {
+        return Err(AppError::new(
+            "VALIDATION_ERROR", "保存先は拡張子 .md の絶対パスで指定してください", false,
+        ));
+    }
+    let content = {
+        let conn = state.0.lock().map_err(lock_error)?;
+        let meeting = meetings::get_meeting(&conn, &meeting_id)?;
+        match kind.as_str() {
+            "minutes" => {
+                let segments = meetings::list_segments(&conn, &meeting_id)?;
+                markdown::format_minutes_document(&meeting, &segments)
+            }
+            "summary" => {
+                let decisions = meeting_ai::list_decisions(&conn, &meeting_id)?;
+                let tasks = meeting_ai::list_candidates(&conn, &meeting_id)?;
+                markdown::format_summary_document(&meeting, &decisions, &tasks)?
+            }
+            _ => return Err(AppError::new(
+                "VALIDATION_ERROR", "書き出す内容の種類が正しくありません", false,
+            )),
+        }
+    };
+    write_text_atomic(target, &content, FileEncoding::Utf8, LineEnding::Lf)?;
+    Ok(target.to_string_lossy().into_owned())
+}
+
 /// §9.5 対象ファイルが閉じている場合のRust側追記。フロントの判断で呼び出す。
 #[tauri::command]
 pub fn meeting_append_segment(
@@ -395,11 +435,6 @@ pub async fn meeting_generate_summary(
         let state = app.state::<DbState>();
         let conn = state.0.lock().map_err(lock_error)?;
         let meeting = meetings::get_meeting(&conn, &meeting_id)?;
-        ensure_meeting_target(
-            &conn,
-            meeting.workspace_id.as_deref(),
-            &meeting.target_file_path,
-        )?;
         let segments = meetings::list_segments(&conn, &meeting_id)?;
         if segments.is_empty() {
             return Err(AppError::new(
@@ -412,7 +447,9 @@ pub async fn meeting_generate_summary(
         (meeting, segments, provider_candidates)
     };
     let transcript_text = summary::build_transcript_text(&meeting, &segments);
-    let user_notes = files::read_user_notes(Path::new(&meeting.target_file_path), &meeting.id)?;
+    // 古い会議や移動済みファイルでも、DBの文字起こしだけで要約できるようにする。
+    let user_notes = files::read_user_notes(Path::new(&meeting.target_file_path), &meeting.id)
+        .unwrap_or_default();
     let user_content = summary::build_user_content(&meeting, &transcript_text, &user_notes);
     let mut generated = None;
     let mut last_error = None;

@@ -124,6 +124,7 @@ pub fn run() {
             commands::meetings::meeting_list,
             commands::meetings::meeting_delete,
             commands::meetings::meeting_list_segments,
+            commands::meetings::meeting_export_markdown,
             commands::meetings::meeting_append_segment,
             commands::meetings::meeting_has_audio,
             commands::meetings::meeting_export_recording,

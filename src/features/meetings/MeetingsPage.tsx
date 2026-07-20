@@ -1,10 +1,12 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { Check, Clipboard, Download, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PanePlaceholder } from "../../components/common/PanePlaceholder";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
 import {
   deleteMeetingAudio,
+  exportMeetingMarkdown,
   isTranscriptionReady,
   listAudioDevices,
   meetingHasAudio,
@@ -76,6 +78,43 @@ function formatTokyoTime(utc: string): string {
     return utc;
   }
   return date.toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
+}
+
+function markdownFileName(title: string, suffix: string): string {
+  const safeTitle = title.trim().replace(/[/\\:*?"<>|]/g, "-") || "会議";
+  return `${safeTitle}_${suffix}.md`;
+}
+
+async function chooseAndExportMarkdown(
+  meeting: Meeting,
+  kind: "minutes" | "summary",
+): Promise<string | null> {
+  const { save } = await import("@tauri-apps/plugin-dialog");
+  const fileName = markdownFileName(meeting.title, kind === "minutes" ? "議事録" : "要約");
+  const base = meeting.targetFilePath.replace(/[^/\\]+$/, "");
+  const selected = await save({
+    title: kind === "minutes" ? "議事録をMarkdownで保存" : "要約をMarkdownで保存",
+    defaultPath: `${base}${fileName}`,
+    filters: [{ name: "Markdown", extensions: ["md"] }],
+  });
+  if (typeof selected !== "string" || !selected) return null;
+  const targetPath = selected.toLowerCase().endsWith(".md") ? selected : `${selected}.md`;
+  return exportMeetingMarkdown(meeting.id, targetPath, kind);
+}
+
+async function copyText(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
 }
 
 function segmentTimeLabel(segment: TranscriptSegment): string {
@@ -464,9 +503,7 @@ function SegmentList({ segments }: { segments: TranscriptSegment[] }) {
 function MeetingList() {
   const meetings = useMeetingStore((s) => s.meetings);
   const selectedMeetingId = useMeetingStore((s) => s.selectedMeetingId);
-  const activeMeeting = useMeetingStore((s) => s.activeMeeting);
   const selectMeeting = useMeetingStore((s) => s.selectMeeting);
-  const remove = useMeetingStore((s) => s.remove);
 
   if (meetings.length === 0) {
     return (
@@ -498,20 +535,6 @@ function MeetingList() {
                 {formatTokyoTime(meeting.startedAtUtc)}・{meetingStatusLabel(meeting.status)}
               </span>
             </button>
-            {meeting.id !== activeMeeting?.id && (
-              <button
-                type="button"
-                className="meeting-list__delete"
-                aria-label={`${meeting.title}を削除`}
-                onClick={() => {
-                  if (window.confirm(`「${meeting.title}」を削除しますか？（ファイルは残ります）`)) {
-                    void remove(meeting.id);
-                  }
-                }}
-              >
-                削除
-              </button>
-            )}
           </li>
         ))}
       </ul>
@@ -607,6 +630,10 @@ function SelectedMeetingView() {
   const selectedMeetingId = useMeetingStore((s) => s.selectedMeetingId);
   const segments = useMeetingStore((s) => s.segments);
   const meeting = meetings.find((m) => m.id === selectedMeetingId);
+  const activeMeeting = useMeetingStore((s) => s.activeMeeting);
+  const remove = useMeetingStore((s) => s.remove);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
 
   if (!meeting) {
     return (
@@ -616,15 +643,54 @@ function SelectedMeetingView() {
       />
     );
   }
+  const saveMinutes = async () => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const path = await chooseAndExportMarkdown(meeting, "minutes");
+      if (path) setMessage(`議事録を保存しました: ${path}`);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteSelectedMeeting = async () => {
+    if (!window.confirm(`「${meeting.title}」を削除しますか？（書き出したファイルは残ります）`)) {
+      return;
+    }
+    await remove(meeting.id);
+  };
+
   return (
     <div className="meeting-active">
       <div className="meeting-active__header">
-        <h2 className="meeting-active__title">{meeting.title}</h2>
-        <span className={`meeting-status meeting-status--${meeting.status}`}>
-          {meetingStatusLabel(meeting.status)}
-        </span>
+        <div className="meeting-active__heading">
+          <h2 className="meeting-active__title">{meeting.title}</h2>
+          <span className={`meeting-status meeting-status--${meeting.status}`}>
+            {meetingStatusLabel(meeting.status)}
+          </span>
+        </div>
+        <div className="meeting-active__header-actions">
+          <button type="button" disabled={busy} onClick={() => void saveMinutes()}>
+            <Download size={14} aria-hidden />
+            議事録を保存
+          </button>
+          {meeting.id !== activeMeeting?.id && (
+            <button
+              type="button"
+              className="meeting-active__delete"
+              onClick={() => void deleteSelectedMeeting()}
+            >
+              <Trash2 size={14} aria-hidden />
+              会議を削除
+            </button>
+          )}
+        </div>
       </div>
       <p className="meeting-active__file">{meeting.targetFilePath}</p>
+      {message && <p className="meeting-active__message">{message}</p>}
       <RecordingActions meetingId={meeting.id} />
       <SegmentList segments={segments} />
     </div>
@@ -639,6 +705,9 @@ function AiMeetingPanel() {
   const generateSummary = useMeetingStore((s) => s.generateSummary);
   const acceptCandidate = useMeetingStore((s) => s.acceptCandidate);
   const [disclosure, setDisclosure] = useState<AiDisclosure | null>(null);
+  const meetings = useMeetingStore((s) => s.meetings);
+  const selectedMeeting = meetings.find((meeting) => meeting.id === selectedMeetingId);
+  const [summaryMessage, setSummaryMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!summaryAvailable) return;
@@ -679,12 +748,45 @@ function AiMeetingPanel() {
       )}
 
       <section className="ai-panel__section">
-        <h3>要約</h3>
+        <div className="ai-panel__section-header">
+          <h3>要約</h3>
+          {ai.summary && selectedMeeting && (
+            <div className="ai-panel__summary-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  void copyText(ai.summary!).then(() => {
+                    setSummaryMessage("コピーしました");
+                    window.setTimeout(() => setSummaryMessage(null), 2000);
+                  }).catch((err) => setSummaryMessage(err instanceof Error ? err.message : String(err)));
+                }}
+              >
+                {summaryMessage === "コピーしました" ? <Check size={13} aria-hidden /> : <Clipboard size={13} aria-hidden />}
+                コピー
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSummaryMessage(null);
+                  void chooseAndExportMarkdown(selectedMeeting, "summary")
+                    .then((path) => {
+                      if (path) setSummaryMessage(`保存しました: ${path}`);
+                    })
+                    .catch((err) => setSummaryMessage(err instanceof Error ? err.message : String(err)));
+                }}
+              >
+                <Download size={13} aria-hidden />
+                Markdown保存
+              </button>
+            </div>
+          )}
+        </div>
         {ai.summary ? (
           <p className="ai-panel__summary">{ai.summary}</p>
         ) : (
           <p className="ai-panel__empty">まだ生成されていません</p>
         )}
+        {summaryMessage && <p className="ai-panel__action-message">{summaryMessage}</p>}
       </section>
 
       <section className="ai-panel__section">

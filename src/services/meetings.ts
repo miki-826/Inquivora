@@ -76,6 +76,14 @@ export async function listSegments(meetingId: string): Promise<TranscriptSegment
   });
 }
 
+export async function exportMeetingMarkdown(
+  meetingId: string,
+  targetPath: string,
+  kind: "minutes" | "summary",
+): Promise<string> {
+  return (await invoke("meeting_export_markdown", { meetingId, targetPath, kind })) as string;
+}
+
 export async function appendSegmentToFile(
   meetingId: string,
   segmentMarkdown: string,

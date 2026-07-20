@@ -40,6 +40,7 @@ export type ConflictState = {
 type EditorStore = {
   tabs: EditorTab[];
   activeTabId: string | null;
+  secondaryTabId: string | null;
   contents: Record<string, string>;
   readModes: Record<string, ReadMode>;
   saveErrors: Record<string, string>;
@@ -48,6 +49,8 @@ type EditorStore = {
   openFile: (entry: TreeEntry) => Promise<void>;
   openPath: (absolutePath: string, options?: Partial<Pick<EditorTab, "isPinned" | "cursorLine" | "cursorColumn">>) => Promise<void>;
   activateTab: (tabId: string) => void;
+  openInSplit: (tabId: string) => void;
+  closeSplit: () => void;
   reorderTab: (fromId: string, toId: string) => void;
   closeTab: (tabId: string) => Promise<void>;
   closeAllTabs: () => void;
@@ -195,6 +198,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
   return {
     tabs: [],
     activeTabId: null,
+    secondaryTabId: null,
     contents: {},
     readModes: {},
     saveErrors: {},
@@ -271,7 +275,31 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     },
 
     activateTab: (tabId) => {
-      set({ activeTabId: tabId });
+      set((state) => {
+        if (state.secondaryTabId === tabId && state.activeTabId !== tabId) {
+          return { activeTabId: tabId, secondaryTabId: state.activeTabId };
+        }
+        return { activeTabId: tabId };
+      });
+    },
+
+    openInSplit: (tabId) => {
+      set((state) => {
+        const splittableTabs = state.tabs.filter(
+          (tab) => tab.viewType === "editor" || tab.viewType === "markdown-preview",
+        );
+        if (splittableTabs.length < 2 || !splittableTabs.some((tab) => tab.id === tabId)) {
+          return state;
+        }
+        const otherTabId = state.secondaryTabId && state.secondaryTabId !== tabId
+          ? state.secondaryTabId
+          : splittableTabs.find((tab) => tab.id !== tabId)?.id ?? null;
+        return { activeTabId: otherTabId, secondaryTabId: tabId };
+      });
+    },
+
+    closeSplit: () => {
+      set({ secondaryTabId: null });
     },
 
     reorderTab: (fromId, toId) => {
@@ -298,9 +326,12 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         delete readModes[tabId];
         delete saveErrors[tabId];
         delete previewVisible[tabId];
+        const secondaryTabId = state.secondaryTabId === tabId ? null : state.secondaryTabId;
         return {
           tabs: next.tabs,
           activeTabId: next.activeTabId,
+          secondaryTabId:
+            next.activeTabId === secondaryTabId ? null : secondaryTabId,
           contents,
           readModes,
           saveErrors,
@@ -316,6 +347,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       set({
         tabs: [],
         activeTabId: null,
+        secondaryTabId: null,
         contents: {},
         readModes: {},
         saveErrors: {},

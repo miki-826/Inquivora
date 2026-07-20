@@ -1,6 +1,6 @@
 import { DiffEditor, Editor } from "@monaco-editor/react";
 import { listen } from "@tauri-apps/api/event";
-import { Eye, EyeOff, Pin, PinOff, X } from "lucide-react";
+import { Columns2, Eye, EyeOff, Pin, PinOff, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { PanePlaceholder } from "../../components/common/PanePlaceholder";
 import { useEditorStore } from "../../stores/useEditorStore";
@@ -30,6 +30,7 @@ function useEditorTheme(): "vs" | "vs-dark" {
 function TabBar() {
   const tabs = useEditorStore((s) => s.tabs);
   const activeTabId = useEditorStore((s) => s.activeTabId);
+  const secondaryTabId = useEditorStore((s) => s.secondaryTabId);
   const saveErrors = useEditorStore((s) => s.saveErrors);
   const store = useEditorStore;
 
@@ -38,6 +39,7 @@ function TabBar() {
     <div className="editor-tabs" role="tablist" aria-label="開いているファイル">
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId;
+        const isSecondary = tab.id === secondaryTabId;
         const hasError = saveErrors[tab.id] !== undefined;
         return (
           <div
@@ -49,6 +51,7 @@ function TabBar() {
             className={[
               "editor-tab",
               isActive ? "editor-tab--active" : "",
+              isSecondary ? "editor-tab--secondary" : "",
               hasError ? "editor-tab--error" : "",
             ]
               .filter(Boolean)
@@ -79,6 +82,7 @@ function TabBar() {
             }}
           >
             {tab.isPinned && <Pin size={11} aria-label="ピン留め済み" />}
+            {isSecondary && <Columns2 size={11} aria-label="右側に表示中" />}
             <span className="editor-tab__name">{tab.name}</span>
             {tab.isDirty && <span className="editor-tab__dirty" aria-label="未保存" />}
             <button
@@ -99,10 +103,13 @@ function TabBar() {
   );
 }
 
-function EditorToolbar({ tab }: { tab: EditorTab }) {
+function EditorToolbar({ tab, secondary = false }: { tab: EditorTab; secondary?: boolean }) {
   const previewVisible = useEditorStore((s) => Boolean(s.previewVisible[tab.id]));
   const readMode = useEditorStore((s) => s.readModes[tab.id] ?? "normal");
   const saveError = useEditorStore((s) => s.saveErrors[tab.id]);
+  const splitAvailable = useEditorStore(
+    (s) => s.tabs.filter((item) => item.viewType === "editor" || item.viewType === "markdown-preview").length > 1,
+  );
   const store = useEditorStore;
 
   return (
@@ -121,6 +128,26 @@ function EditorToolbar({ tab }: { tab: EditorTab }) {
         </span>
       )}
       <div className="editor-toolbar__actions">
+        {secondary ? (
+          <button
+            type="button"
+            title="分割表示を閉じる"
+            aria-label="分割表示を閉じる"
+            onClick={() => store.getState().closeSplit()}
+          >
+            <X size={14} aria-hidden />
+          </button>
+        ) : (
+          <button
+            type="button"
+            title={splitAvailable ? "このメモを右側に表示" : "2つ以上のメモを開くと分割できます"}
+            aria-label="このメモを右側に表示"
+            disabled={!splitAvailable}
+            onClick={() => store.getState().openInSplit(tab.id)}
+          >
+            <Columns2 size={14} aria-hidden />
+          </button>
+        )}
         {tab.language === "markdown" && (
           <button
             type="button"
@@ -197,9 +224,8 @@ function ConflictDialog() {
   );
 }
 
-function ActivePane() {
+function ActivePane({ tabId, secondary = false }: { tabId: string | null; secondary?: boolean }) {
   const tabs = useEditorStore((s) => s.tabs);
-  const activeTabId = useEditorStore((s) => s.activeTabId);
   const contents = useEditorStore((s) => s.contents);
   const readModes = useEditorStore((s) => s.readModes);
   const previewVisible = useEditorStore((s) => s.previewVisible);
@@ -208,7 +234,7 @@ function ActivePane() {
   const [selectionTask, setSelectionTask] = useState<SelectionTaskDraft | null>(null);
   const activePathRef = useRef("");
 
-  const tab = tabs.find((t) => t.id === activeTabId);
+  const tab = tabs.find((t) => t.id === tabId);
   useEffect(() => {
     activePathRef.current = tab?.path ?? "";
   }, [tab?.path]);
@@ -230,8 +256,8 @@ function ActivePane() {
   const showPreview = Boolean(previewVisible[tab.id]) && tab.language === "markdown";
 
   return (
-    <div className="editor-pane">
-      <EditorToolbar tab={tab} />
+    <div className={`editor-pane${secondary ? " editor-pane--secondary" : ""}`}>
+      <EditorToolbar tab={tab} secondary={secondary} />
       <div className="editor-pane__body">
         <div className="editor-pane__monaco">
           <Editor
@@ -305,6 +331,8 @@ function ActivePane() {
 
 export function EditorArea() {
   const workspaceId = useWorkspaceStore((s) => s.workspace?.id ?? null);
+  const activeTabId = useEditorStore((s) => s.activeTabId);
+  const secondaryTabId = useEditorStore((s) => s.secondaryTabId);
 
   useEffect(() => {
     useEditorStore.getState().closeAllTabs();
@@ -339,8 +367,9 @@ export function EditorArea() {
   return (
     <div className="editor-area">
       <TabBar />
-      <div className="editor-area__content">
-        <ActivePane />
+      <div className={`editor-area__content${secondaryTabId ? " editor-area__content--split" : ""}`}>
+        <ActivePane tabId={activeTabId} />
+        {secondaryTabId && <ActivePane tabId={secondaryTabId} secondary />}
       </div>
       <ConflictDialog />
     </div>
