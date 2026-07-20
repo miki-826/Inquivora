@@ -44,11 +44,96 @@ body {
 button {
   font-family: inherit;
   cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease,
+    transform 0.12s ease, filter 0.12s ease;
 }
 
 :focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 1px;
+}
+
+/* 主要CTA（会議開始・議事録生成など）の共通スタイル */
+.meeting-page__start,
+.meeting-dialog__start,
+.ws-meeting-panel__start,
+.ai-panel__generate,
+.meeting-setup-hint__button {
+  border: none;
+  color: #fff;
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-hover));
+  border-radius: var(--radius-md);
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
+}
+
+.meeting-page__start:hover,
+.meeting-dialog__start:hover:not(:disabled),
+.ws-meeting-panel__start:hover,
+.ai-panel__generate:hover:not(:disabled),
+.meeting-setup-hint__button:hover {
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.32);
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+}
+
+.meeting-page__start:active,
+.meeting-dialog__start:active,
+.ws-meeting-panel__start:active,
+.ai-panel__generate:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
+}
+
+.meeting-page__start:disabled,
+.meeting-dialog__start:disabled,
+.ai-panel__generate:disabled {
+  opacity: 0.55;
+  box-shadow: none;
+  filter: none;
+  transform: none;
+  cursor: not-allowed;
+}
+
+/* 設定・ダイアログの汎用ボタン（セカンダリ） */
+.settings-actions button,
+.meeting-dialog__actions button:not(.meeting-dialog__start),
+.provider-card__actions button,
+.binding-row button {
+  border: 1px solid var(--color-border, #d5dae3);
+  background: var(--color-surface, #fff);
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.settings-actions button:hover:not(:disabled),
+.meeting-dialog__actions button:not(.meeting-dialog__start):hover,
+.provider-card__actions button:hover:not(:disabled),
+.binding-row button:hover:not(:disabled) {
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.settings-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.provider-card__danger,
+.settings-actions button.provider-card__danger {
+  color: var(--color-danger, #d9534f);
+}
+
+.provider-card__danger:hover:not(:disabled) {
+  background: rgba(217, 83, 79, 0.1);
+  border-color: var(--color-danger, #d9534f);
+  color: var(--color-danger, #d9534f);
 }
 
 .app-shell {
