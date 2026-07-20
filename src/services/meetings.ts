@@ -119,6 +119,10 @@ export async function prepareFullRecording(meetingId: string): Promise<string> {
   return (await invoke("meeting_prepare_full_recording", { meetingId })) as string;
 }
 
+export async function saveFullRecording(meetingId: string, targetPath: string): Promise<string> {
+  return (await invoke("meeting_save_full_recording", { meetingId, targetPath })) as string;
+}
+
 export async function deleteMeetingAudio(meetingId: string): Promise<void> {
   await invoke("meeting_delete_audio", { meetingId });
 }

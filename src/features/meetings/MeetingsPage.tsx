@@ -12,6 +12,7 @@ import {
   meetingHasAudio,
   prepareFullRecording,
   revealMeetingAudio,
+  saveFullRecording,
   type AudioDevice,
 } from "../../services/meetings";
 import { loadSetting, saveSetting } from "../../services/settings";
@@ -542,7 +543,8 @@ function MeetingList() {
   );
 }
 
-function RecordingActions({ meetingId }: { meetingId: string }) {
+function RecordingActions({ meeting }: { meeting: Meeting }) {
+  const meetingId = meeting.id;
   const [hasAudio, setHasAudio] = useState(false);
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -581,6 +583,31 @@ function RecordingActions({ meetingId }: { meetingId: string }) {
     }
   };
 
+  const download = async () => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const safeTitle = meeting.title.trim().replace(/[/\\:*?"<>|]/g, "-") || "会議";
+      const base = meeting.targetFilePath.replace(/[^/\\]+$/, "");
+      const selected = await save({
+        title: "録音全体を保存",
+        defaultPath: `${base}${safeTitle}_録音.wav`,
+        filters: [{ name: "WAV音声", extensions: ["wav"] }],
+      });
+      if (typeof selected !== "string" || !selected) {
+        return;
+      }
+      const targetPath = selected.toLowerCase().endsWith(".wav") ? selected : `${selected}.wav`;
+      const saved = await saveFullRecording(meetingId, targetPath);
+      setMessage(`録音を保存しました: ${saved}`);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const remove = async () => {
     if (!window.confirm("この会議の録音を削除しますか？元に戻せません。")) {
       return;
@@ -604,6 +631,10 @@ function RecordingActions({ meetingId }: { meetingId: string }) {
       <div className="meeting-recording__actions">
         <button type="button" disabled={busy} onClick={() => void playFull()}>
           {busy ? "準備中…" : "▶ 全体を再生"}
+        </button>
+        <button type="button" disabled={busy} onClick={() => void download()}>
+          <Download size={14} aria-hidden />
+          録音を保存
         </button>
         <button type="button" onClick={() => void revealMeetingAudio(meetingId)}>
           フォルダを開く
@@ -691,7 +722,7 @@ function SelectedMeetingView() {
       </div>
       <p className="meeting-active__file">{meeting.targetFilePath}</p>
       {message && <p className="meeting-active__message">{message}</p>}
-      <RecordingActions meetingId={meeting.id} />
+      <RecordingActions meeting={meeting} />
       <SegmentList segments={segments} />
     </div>
   );

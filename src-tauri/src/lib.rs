@@ -129,6 +129,7 @@ pub fn run() {
             commands::meetings::meeting_has_audio,
             commands::meetings::meeting_export_recording,
             commands::meetings::meeting_prepare_full_recording,
+            commands::meetings::meeting_save_full_recording,
             commands::meetings::meeting_delete_audio,
             commands::meetings::meeting_reveal_audio,
             commands::meetings::meeting_list_devices,

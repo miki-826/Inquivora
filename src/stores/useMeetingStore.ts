@@ -205,6 +205,8 @@ export const useMeetingStore = create<MeetingStore>((set, get) => ({
           },
         });
       }
+      // 会議名がAIタイトルで更新されることがあるため一覧を取り直す。
+      await get().loadMeetings();
     } catch (error) {
       set({ error: messageOf(error) });
     } finally {

@@ -333,6 +333,11 @@ export function EditorArea() {
   const workspaceId = useWorkspaceStore((s) => s.workspace?.id ?? null);
   const activeTabId = useEditorStore((s) => s.activeTabId);
   const secondaryTabId = useEditorStore((s) => s.secondaryTabId);
+  const splittableCount = useEditorStore(
+    (s) => s.tabs.filter((t) => t.viewType === "editor" || t.viewType === "markdown-preview").length,
+  );
+  const [tabDragging, setTabDragging] = useState(false);
+  const [dropHover, setDropHover] = useState(false);
 
   useEffect(() => {
     useEditorStore.getState().closeAllTabs();
@@ -364,12 +369,47 @@ export function EditorArea() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  const canSplit = tabDragging && !secondaryTabId && splittableCount >= 2;
+
   return (
-    <div className="editor-area">
+    <div
+      className="editor-area"
+      onDragStart={(e) => {
+        if (e.dataTransfer.types.includes("text/inquivora-tab")) setTabDragging(true);
+      }}
+      onDragEnd={() => {
+        setTabDragging(false);
+        setDropHover(false);
+      }}
+    >
       <TabBar />
       <div className={`editor-area__content${secondaryTabId ? " editor-area__content--split" : ""}`}>
         <ActivePane tabId={activeTabId} />
         {secondaryTabId && <ActivePane tabId={secondaryTabId} secondary />}
+        {canSplit && (
+          <div
+            className={`editor-split-dropzone${dropHover ? " editor-split-dropzone--hover" : ""}`}
+            onDragOver={(e) => {
+              if (!e.dataTransfer.types.includes("text/inquivora-tab")) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              if (!dropHover) setDropHover(true);
+            }}
+            onDragLeave={() => setDropHover(false)}
+            onDrop={(e) => {
+              const tabId = e.dataTransfer.getData("text/inquivora-tab");
+              e.preventDefault();
+              setTabDragging(false);
+              setDropHover(false);
+              if (tabId) useEditorStore.getState().openInSplit(tabId);
+            }}
+          >
+            <span className="editor-split-dropzone__hint">
+              <Columns2 size={18} aria-hidden />
+              ここにドロップで右側に分割表示
+            </span>
+          </div>
+        )}
       </div>
       <ConflictDialog />
     </div>

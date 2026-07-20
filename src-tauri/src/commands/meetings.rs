@@ -233,6 +233,38 @@ pub fn meeting_prepare_full_recording(
     audio::export_mixed(&dir, &meeting_id, &segments)
 }
 
+/// 全音源を合成した通し録音WAVを、利用者が選んだ場所へ保存する（ダウンロード用）。
+#[tauri::command]
+pub fn meeting_save_full_recording(
+    app: AppHandle,
+    meeting_id: String,
+    target_path: String,
+) -> Result<String, AppError> {
+    let target = Path::new(target_path.trim());
+    let is_wav = target
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case("wav"));
+    if !target.is_absolute() || !is_wav {
+        return Err(AppError::new(
+            "VALIDATION_ERROR",
+            "保存先は拡張子 .wav の絶対パスで指定してください",
+            false,
+        ));
+    }
+    let dir = audio::meeting_audio_dir(&app, &meeting_id)?;
+    let segments = {
+        let state = app.state::<DbState>();
+        let conn = state.0.lock().map_err(lock_error)?;
+        meetings::list_segments(&conn, &meeting_id)?
+    };
+    let source = audio::export_mixed(&dir, &meeting_id, &segments)?;
+    std::fs::copy(&source, target).map_err(|e| {
+        AppError::new("FILE_IO_ERROR", format!("録音の保存に失敗しました: {e}"), false)
+    })?;
+    Ok(target.to_string_lossy().into_owned())
+}
+
 /// 会議の録音を削除する。
 #[tauri::command]
 pub fn meeting_delete_audio(app: AppHandle, meeting_id: String) -> Result<(), AppError> {
@@ -521,12 +553,24 @@ pub async fn meeting_generate_summary(
         })
         .collect();
 
+    // 会議名が日付だけ・既定値などで内容を表さない場合は、AIが付けたタイトルへ更新する。
+    let renamed_title = if summary::is_generic_title(&meeting.title)
+        && !output.title.trim().is_empty()
+        && !summary::is_generic_title(&output.title)
+    {
+        Some(output.title.trim().to_string())
+    } else {
+        None
+    };
     let (decisions, task_candidates) = {
         let state = app.state::<DbState>();
         let conn = state.0.lock().map_err(lock_error)?;
         meeting_ai::set_summary(&conn, &meeting_id, &output.summary)?;
         meeting_ai::replace_decisions(&conn, &meeting_id, &decision_inputs)?;
         meeting_ai::replace_candidates(&conn, &meeting_id, &candidate_inputs)?;
+        if let Some(ref title) = renamed_title {
+            let _ = meetings::rename_meeting(&conn, &meeting_id, title);
+        }
         record_summary_usage(&conn, &profile.id, &model, &meeting_id, "success", None);
         if let Ok(updated) = meetings::get_meeting(&conn, &meeting_id) {
             let segments = meetings::list_segments(&conn, &meeting_id).unwrap_or_default();

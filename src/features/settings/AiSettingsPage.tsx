@@ -439,52 +439,58 @@ function BindingRow({
   return (
     <div className="binding-row">
       <div className="binding-row__label">{featureLabel(featureKey)}</div>
-      <select
-        value={binding?.providerProfileId ?? ""}
-        onChange={(e) => save(e.target.value || null, binding?.modelId ?? null)}
-      >
-        <option value="">未設定</option>
-        {providers
-          .filter((p) => p.enabled)
-          .map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.displayName}
-            </option>
+      <div className="binding-row__group">
+        <span className="binding-row__group-label">使用</span>
+        <select
+          aria-label={`${featureLabel(featureKey)}のProvider`}
+          value={binding?.providerProfileId ?? ""}
+          onChange={(e) => save(e.target.value || null, binding?.modelId ?? null)}
+        >
+          <option value="">未設定</option>
+          {providers
+            .filter((p) => p.enabled)
+            .map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.displayName}
+              </option>
+            ))}
+        </select>
+        <input
+          type="text"
+          list={datalistId}
+          placeholder="モデルID（手入力可）"
+          value={binding?.modelId ?? ""}
+          onChange={(e) => save(binding?.providerProfileId ?? null, e.target.value || null)}
+        />
+        <datalist id={datalistId}>
+          {models.map((model) => (
+            <option key={model} value={model} />
           ))}
-      </select>
-      <input
-        type="text"
-        list={datalistId}
-        placeholder="モデルID（手入力可）"
-        value={binding?.modelId ?? ""}
-        onChange={(e) => save(binding?.providerProfileId ?? null, e.target.value || null)}
-      />
-      <datalist id={datalistId}>
-        {models.map((model) => (
-          <option key={model} value={model} />
-        ))}
-      </datalist>
-      <button type="button" disabled={!binding?.providerProfileId} onClick={() => void fetchModels()}>
-        取得
-      </button>
-      <span className="binding-row__fallback-label">予備</span>
-      <select
-        aria-label={`${featureLabel(featureKey)}の予備Provider`}
-        value={binding?.fallbackProviderProfileId ?? ""}
-        onChange={(e) => saveFallback(e.target.value || null, binding?.fallbackModelId ?? null)}
-      >
-        <option value="">未設定</option>
-        {providers.filter((p) => p.enabled && p.id !== binding?.providerProfileId).map((p) => (
-          <option key={p.id} value={p.id}>{p.displayName}</option>
-        ))}
-      </select>
-      <input
-        type="text"
-        aria-label={`${featureLabel(featureKey)}の予備モデルID`}
-        placeholder="予備モデルID"
-        value={binding?.fallbackModelId ?? ""}
-        onChange={(e) => saveFallback(binding?.fallbackProviderProfileId ?? null, e.target.value || null)}
-      />
+        </datalist>
+        <button type="button" disabled={!binding?.providerProfileId} onClick={() => void fetchModels()}>
+          取得
+        </button>
+      </div>
+      <div className="binding-row__group">
+        <span className="binding-row__group-label">予備</span>
+        <select
+          aria-label={`${featureLabel(featureKey)}の予備Provider`}
+          value={binding?.fallbackProviderProfileId ?? ""}
+          onChange={(e) => saveFallback(e.target.value || null, binding?.fallbackModelId ?? null)}
+        >
+          <option value="">未設定</option>
+          {providers.filter((p) => p.enabled && p.id !== binding?.providerProfileId).map((p) => (
+            <option key={p.id} value={p.id}>{p.displayName}</option>
+          ))}
+        </select>
+        <input
+          type="text"
+          aria-label={`${featureLabel(featureKey)}の予備モデルID`}
+          placeholder="予備モデルID"
+          value={binding?.fallbackModelId ?? ""}
+          onChange={(e) => saveFallback(binding?.fallbackProviderProfileId ?? null, e.target.value || null)}
+        />
+      </div>
       {error && (
         <span className="settings-actions__error" role="alert">
           {error}

@@ -136,6 +136,21 @@ pub fn list_meetings(conn: &Connection, limit: i64) -> Result<Vec<Meeting>, AppE
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
+pub fn rename_meeting(conn: &Connection, id: &str, title: &str) -> Result<(), AppError> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Ok(());
+    }
+    let affected = conn.execute(
+        "UPDATE meetings SET title = ?2, updated_at = ?3 WHERE id = ?1",
+        rusqlite::params![id, title, Utc::now().to_rfc3339()],
+    )?;
+    if affected == 0 {
+        return Err(AppError::new("MEETING_NOT_FOUND", "会議が見つかりません", false));
+    }
+    Ok(())
+}
+
 pub fn set_meeting_status(
     conn: &Connection,
     id: &str,

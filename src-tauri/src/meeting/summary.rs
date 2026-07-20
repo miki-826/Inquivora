@@ -113,6 +113,19 @@ pub fn build_transcript_text(meeting: &Meeting, segments: &[TranscriptSegment]) 
         .join("\n")
 }
 
+/// 会議タイトルが日付だけ・空・既定値など内容を表さないものかを判定する。
+/// これらの場合はAIが生成したタイトルで会議名を更新し、要約に反映しやすくする。
+pub fn is_generic_title(title: &str) -> bool {
+    let trimmed = title.trim();
+    if trimmed.is_empty() || trimmed == "会議" || trimmed == "無題" {
+        return true;
+    }
+    // 日付・時刻・区切り文字だけで構成されているタイトル（例: 2026-07-20）は内容を表さない。
+    trimmed
+        .chars()
+        .all(|c| c.is_ascii_digit() || matches!(c, '-' | '/' | '.' | ':' | ' ' | '_'))
+}
+
 /// 議事録生成のシステムプロンプト。JSONのみを返すよう指示する（§10.10）。
 pub fn system_prompt() -> String {
     "あなたは日本語の会議アシスタントです。与えられた文字起こしから議事録を作成します。\
@@ -122,7 +135,9 @@ pub fn system_prompt() -> String {
      \"priority\": \"high\"|\"medium\"|\"low\", \"sourceStartMs\"?: number}], \
      \"openQuestions\": [{\"text\": string, \"sourceStartMs\"?: number}]}。\
      sourceStartMsには根拠となる発話の開始ミリ秒（角括弧内の|の後ろの数値）を入れてください。\
-     決定事項・タスク・未確認事項が無い場合は空配列にします。summaryは日本語で簡潔にまとめます。"
+     決定事項・タスク・未確認事項が無い場合は空配列にします。\
+     summaryは日付やファイル名ではなく、文字起こし本文の内容そのものを日本語で簡潔にまとめます。\
+     titleは会議の議題が一目で分かる短い日本語の見出しにします（日付だけにしないでください）。"
         .to_string()
 }
 
@@ -192,6 +207,18 @@ mod tests {
             text,
             "[10:03|180000] 自分: 導入を開始します\n[10:04|240000] PC音声: 了解です"
         );
+    }
+
+    #[test]
+    fn 日付だけや既定値のタイトルは汎用と判定される() {
+        assert!(is_generic_title(""));
+        assert!(is_generic_title("  "));
+        assert!(is_generic_title("会議"));
+        assert!(is_generic_title("無題"));
+        assert!(is_generic_title("2026-07-20"));
+        assert!(is_generic_title("2026/07/20 14:30"));
+        assert!(!is_generic_title("定例会議"));
+        assert!(!is_generic_title("7月の予算レビュー"));
     }
 
     #[test]
