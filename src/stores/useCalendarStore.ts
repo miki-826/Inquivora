@@ -3,7 +3,7 @@ import type { EventRecord } from "../features/calendar/calendarModel";
 import type { Task } from "../features/tasks/taskModel";
 import * as eventService from "../services/events";
 import type { EventInput, EventPatch } from "../services/events";
-import { listTasks, updateTask } from "../services/tasks";
+import { listTasks, updateTask as saveTask, type TaskPatch } from "../services/tasks";
 
 type CalendarState = {
   events: EventRecord[];
@@ -17,6 +17,7 @@ type CalendarState = {
   createEvent: (input: EventInput) => Promise<EventRecord | null>;
   updateEvent: (id: string, patch: EventPatch) => Promise<boolean>;
   removeEvent: (id: string) => Promise<void>;
+  updateTask: (id: string, patch: TaskPatch) => Promise<boolean>;
   scheduleTask: (id: string, dueAtUtc: string) => Promise<boolean>;
   setFocusEventId: (id: string | null) => void;
 };
@@ -105,17 +106,17 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     }
   },
 
-  scheduleTask: async (id, dueAtUtc) => {
+  updateTask: async (id, patch) => {
     const snapshot = get().tasks;
     const current = snapshot.find((task) => task.id === id);
     if (!current) return false;
     set({
       tasks: snapshot.map((task) =>
-        task.id === id ? { ...task, dueAtUtc, updatedAt: new Date().toISOString() } : task,
+        task.id === id ? { ...task, ...patch, updatedAt: new Date().toISOString() } : task,
       ),
     });
     try {
-      const saved = await updateTask(id, { dueAtUtc });
+      const saved = await saveTask(id, patch);
       set((state) => ({
         tasks: state.tasks.map((task) => (task.id === id ? saved : task)),
         error: null,
@@ -126,4 +127,6 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       return false;
     }
   },
+
+  scheduleTask: (id, dueAtUtc) => get().updateTask(id, { dueAtUtc }),
 }));

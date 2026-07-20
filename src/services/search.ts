@@ -11,6 +11,11 @@ export async function searchGlobal(
   return parseSearchResults(value);
 }
 
+export async function searchComputerFiles(query: string, limit = 100): Promise<SearchResult[]> {
+  const value = await invoke("search_computer_files", { query, limit });
+  return parseSearchResults(value);
+}
+
 /// 索引の全再構築を要求する。実処理はバックエンドの別スレッドで行われ、
 /// 進捗は search:index-started / search:index-done イベントで通知される。
 export async function reindexWorkspace(): Promise<void> {

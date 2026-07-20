@@ -1,6 +1,9 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
+#[cfg(target_os = "windows")]
+use std::process::Command;
 
+use serde::Deserialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::commands::workspace::{active_root, WorkspaceState};
@@ -30,6 +33,146 @@ pub fn search_global(
         limit.unwrap_or(50).clamp(1, 200),
         offset.unwrap_or(0).max(0),
     )
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct ComputerFileResult {
+    path: String,
+    name: String,
+}
+
+/// Windows Search のインデックスを使い、PC全体からファイル名を検索する。
+/// ディスクを毎回走査しないため、大きなPCでもUIをブロックしない。
+#[tauri::command]
+pub async fn search_computer_files(
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<SearchResult>, AppError> {
+    let trimmed = query.trim().to_owned();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    let limit = limit.unwrap_or(100).clamp(1, 200);
+
+    tauri::async_runtime::spawn_blocking(move || search_computer_files_blocking(&trimmed, limit))
+        .await
+        .map_err(|error| {
+            AppError::new(
+                "COMPUTER_SEARCH_FAILED",
+                format!("PC全体の検索処理を開始できませんでした: {error}"),
+                true,
+            )
+        })?
+}
+
+#[cfg(target_os = "windows")]
+fn search_computer_files_blocking(
+    query: &str,
+    limit: usize,
+) -> Result<Vec<SearchResult>, AppError> {
+    const SCRIPT: &str = r#"
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$query = $env:INQUIVORA_SEARCH_QUERY
+$limit = [Math]::Min([Math]::Max([int]$env:INQUIVORA_SEARCH_LIMIT, 1), 200)
+$escaped = $query.Replace("'", "''").Replace("[", "[[]").Replace("%", "[%]").Replace("_", "[_]")
+$connection = New-Object System.Data.OleDb.OleDbConnection("Provider=Search.CollatorDSO;Extended Properties='Application=Windows';")
+$items = @()
+try {
+  $connection.Open()
+  $command = $connection.CreateCommand()
+  $command.CommandText = "SELECT TOP $limit System.ItemUrl, System.FileName FROM SYSTEMINDEX WHERE System.FileName LIKE '%$escaped%' AND System.ItemType <> 'Directory'"
+  $reader = $command.ExecuteReader()
+  try {
+    while ($reader.Read()) {
+      if ($reader.IsDBNull(0)) { continue }
+      $itemUrl = $reader.GetString(0)
+      try { $path = ([Uri]$itemUrl).LocalPath } catch { continue }
+      if ([string]::IsNullOrWhiteSpace($path) -or -not [System.IO.Path]::IsPathRooted($path)) { continue }
+      $name = if ($reader.IsDBNull(1)) { [System.IO.Path]::GetFileName($path) } else { $reader.GetString(1) }
+      $items += [PSCustomObject]@{ Path = $path; Name = $name }
+    }
+  } finally {
+    if ($reader) { $reader.Dispose() }
+  }
+} finally {
+  $connection.Dispose()
+}
+ConvertTo-Json -InputObject @($items) -Compress
+"#;
+
+    let output = Command::new("powershell.exe")
+        .args([
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            SCRIPT,
+        ])
+        .env("INQUIVORA_SEARCH_QUERY", query)
+        .env("INQUIVORA_SEARCH_LIMIT", limit.to_string())
+        .output()
+        .map_err(|error| {
+            AppError::new(
+                "COMPUTER_SEARCH_UNAVAILABLE",
+                format!("Windows検索を起動できませんでした: {error}"),
+                true,
+            )
+        })?;
+
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        return Err(AppError::new(
+            "COMPUTER_SEARCH_FAILED",
+            if detail.is_empty() {
+                "Windows検索インデックスを利用できませんでした".to_owned()
+            } else {
+                format!("Windows検索インデックスを利用できませんでした: {detail}")
+            },
+            true,
+        ));
+    }
+
+    let json = String::from_utf8(output.stdout).map_err(|error| {
+        AppError::new(
+            "COMPUTER_SEARCH_FAILED",
+            format!("検索結果の文字コードを読み取れませんでした: {error}"),
+            true,
+        )
+    })?;
+    let files: Vec<ComputerFileResult> = serde_json::from_str(json.trim()).map_err(|error| {
+        AppError::new(
+            "COMPUTER_SEARCH_FAILED",
+            format!("検索結果を読み取れませんでした: {error}"),
+            true,
+        )
+    })?;
+
+    Ok(files
+        .into_iter()
+        .map(|file| SearchResult {
+            entity_type: "file".to_owned(),
+            entity_id: file.path.clone(),
+            title: file.name,
+            snippet: String::new(),
+            path: Some(file.path),
+        })
+        .collect())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn search_computer_files_blocking(
+    _query: &str,
+    _limit: usize,
+) -> Result<Vec<SearchResult>, AppError> {
+    Err(AppError::new(
+        "COMPUTER_SEARCH_UNAVAILABLE",
+        "PC全体の検索はWindows版でのみ利用できます",
+        false,
+    ))
 }
 
 /// §15.3/§17.7 索引の全再構築。UIをブロックしないよう別スレッドで実行し、

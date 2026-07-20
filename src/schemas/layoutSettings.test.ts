@@ -3,8 +3,28 @@ import { DEFAULT_LAYOUT_SETTINGS, parseLayoutSettings } from "./layoutSettings";
 
 describe("parseLayoutSettings", () => {
   it("正しい値はそのまま採用する", () => {
-    const value = { leftSidebarWidth: 280, rightSidebarWidth: 400, lastScreen: "/tasks" };
+    const value = {
+      leftSidebarWidth: 280,
+      rightSidebarWidth: 400,
+      lastScreen: "/tasks",
+      navigationPosition: "top" as const,
+    };
     expect(parseLayoutSettings(value)).toEqual(value);
+  });
+
+  it("古い設定には左側ナビゲーションを補完する", () => {
+    expect(
+      parseLayoutSettings({
+        leftSidebarWidth: 280,
+        rightSidebarWidth: 400,
+        lastScreen: "/tasks",
+      }),
+    ).toEqual({
+      leftSidebarWidth: 280,
+      rightSidebarWidth: 400,
+      lastScreen: "/tasks",
+      navigationPosition: "side",
+    });
   });
 
   it("nullや不正値は既定値を返す", () => {

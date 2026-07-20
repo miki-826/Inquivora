@@ -761,6 +761,8 @@ export function MeetingsPage() {
     <ThreePaneLayout
       left={<MeetingList />}
       right={<AiMeetingPanel />}
+      leftLabel="会議一覧"
+      rightLabel="AIパネル"
     >
       <div className="meeting-page">
         {error && (

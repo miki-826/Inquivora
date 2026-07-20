@@ -13,6 +13,8 @@ export function WorkspacePage() {
     <ThreePaneLayout
       left={<FileTree onOpenFile={openFile} />}
       right={<WorkspaceMeetingPanel />}
+      leftLabel="ファイルツリー"
+      rightLabel="会議パネル"
     >
       <EditorArea />
     </ThreePaneLayout>

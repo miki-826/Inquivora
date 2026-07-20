@@ -12,6 +12,7 @@ import { useThemeStore } from "../stores/useThemeStore";
 export function AppShell() {
   const location = useLocation();
   const setLastScreen = useSettingsStore((s) => s.setLastScreen);
+  const navigationPosition = useSettingsStore((s) => s.navigationPosition);
   useDeepLink();
 
   useEffect(() => {
@@ -30,7 +31,7 @@ export function AppShell() {
     <div className="app-shell">
       <Toolbar />
       <div className="app-shell__body">
-        <VerticalNav />
+        {navigationPosition === "side" && <VerticalNav />}
         <main className="app-shell__main">
           <Suspense fallback={<div className="app-shell__loading">読み込み中…</div>}>
             <Outlet />

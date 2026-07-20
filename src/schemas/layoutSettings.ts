@@ -16,22 +16,27 @@ export const SCREEN_PATHS = [
   "/settings",
 ] as const;
 
+export type NavigationPosition = "side" | "top";
+
 export type LayoutSettings = {
   leftSidebarWidth: number;
   rightSidebarWidth: number;
   lastScreen: string;
+  navigationPosition: NavigationPosition;
 };
 
 export const DEFAULT_LAYOUT_SETTINGS: LayoutSettings = {
   leftSidebarWidth: 320,
   rightSidebarWidth: 360,
   lastScreen: "/workspace",
+  navigationPosition: "side",
 };
 
 const layoutSettingsSchema = z.object({
-  leftSidebarWidth: z.number(),
-  rightSidebarWidth: z.number(),
-  lastScreen: z.string(),
+  leftSidebarWidth: z.number().optional(),
+  rightSidebarWidth: z.number().optional(),
+  lastScreen: z.string().optional(),
+  navigationPosition: z.enum(["side", "top"]).optional(),
 });
 
 export function parseLayoutSettings(value: unknown): LayoutSettings {
@@ -39,10 +44,17 @@ export function parseLayoutSettings(value: unknown): LayoutSettings {
   if (!result.success) {
     return DEFAULT_LAYOUT_SETTINGS;
   }
-  const isKnownScreen = (SCREEN_PATHS as readonly string[]).includes(result.data.lastScreen);
+  const lastScreen = result.data.lastScreen ?? DEFAULT_LAYOUT_SETTINGS.lastScreen;
+  const isKnownScreen = (SCREEN_PATHS as readonly string[]).includes(lastScreen);
   return {
-    leftSidebarWidth: clampSidebarWidth(result.data.leftSidebarWidth),
-    rightSidebarWidth: clampSidebarWidth(result.data.rightSidebarWidth),
-    lastScreen: isKnownScreen ? result.data.lastScreen : DEFAULT_LAYOUT_SETTINGS.lastScreen,
+    leftSidebarWidth: clampSidebarWidth(
+      result.data.leftSidebarWidth ?? DEFAULT_LAYOUT_SETTINGS.leftSidebarWidth,
+    ),
+    rightSidebarWidth: clampSidebarWidth(
+      result.data.rightSidebarWidth ?? DEFAULT_LAYOUT_SETTINGS.rightSidebarWidth,
+    ),
+    lastScreen: isKnownScreen ? lastScreen : DEFAULT_LAYOUT_SETTINGS.lastScreen,
+    navigationPosition:
+      result.data.navigationPosition ?? DEFAULT_LAYOUT_SETTINGS.navigationPosition,
   };
 }

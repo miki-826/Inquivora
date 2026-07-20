@@ -5,6 +5,7 @@ import {
   parseLayoutSettings,
   SIDEBAR_WIDTH_MAX,
   SIDEBAR_WIDTH_MIN,
+  type NavigationPosition,
 } from "../schemas/layoutSettings";
 import { loadSetting, saveSetting } from "../services/settings";
 
@@ -17,11 +18,13 @@ type SettingsState = {
   leftSidebarWidth: number;
   rightSidebarWidth: number;
   lastScreen: string;
+  navigationPosition: NavigationPosition;
   hydrated: boolean;
   hydrate: () => Promise<void>;
   setLeftSidebarWidth: (width: number) => void;
   setRightSidebarWidth: (width: number) => void;
   setLastScreen: (path: string) => void;
+  setNavigationPosition: (position: NavigationPosition) => void;
 };
 
 let persistTimer: ReturnType<typeof setTimeout> | undefined;
@@ -29,10 +32,13 @@ let persistTimer: ReturnType<typeof setTimeout> | undefined;
 function schedulePersist(get: () => SettingsState) {
   clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
-    const { leftSidebarWidth, rightSidebarWidth, lastScreen } = get();
-    saveSetting(LAYOUT_SETTING_KEY, { leftSidebarWidth, rightSidebarWidth, lastScreen }).catch(
-      (error) => console.error("レイアウト設定の保存に失敗しました", error),
-    );
+    const { leftSidebarWidth, rightSidebarWidth, lastScreen, navigationPosition } = get();
+    saveSetting(LAYOUT_SETTING_KEY, {
+      leftSidebarWidth,
+      rightSidebarWidth,
+      lastScreen,
+      navigationPosition,
+    }).catch((error) => console.error("レイアウト設定の保存に失敗しました", error));
   }, PERSIST_DEBOUNCE_MS);
 }
 
@@ -58,6 +64,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
   setLastScreen: (path) => {
     set({ lastScreen: path });
+    schedulePersist(get);
+  },
+  setNavigationPosition: (navigationPosition) => {
+    set({ navigationPosition });
     schedulePersist(get);
   },
 }));

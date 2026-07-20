@@ -8,6 +8,7 @@ import {
   type NotificationSettings,
 } from "../notifications/notificationModel";
 import { useThemeStore } from "../../stores/useThemeStore";
+import { useSettingsStore } from "../../stores/useSettingsStore";
 import { SettingsNav } from "./SettingsNav";
 import { THEME_OPTIONS } from "./themeModel";
 
@@ -170,6 +171,8 @@ function GeneralSettingsSection() {
 function AppearanceSettingsSection() {
   const preference = useThemeStore((s) => s.preference);
   const setPreference = useThemeStore((s) => s.setPreference);
+  const navigationPosition = useSettingsStore((s) => s.navigationPosition);
+  const setNavigationPosition = useSettingsStore((s) => s.setNavigationPosition);
 
   return (
     <section className="settings-section">
@@ -192,6 +195,25 @@ function AppearanceSettingsSection() {
       <p className="settings-note">
         「OSに合わせる」を選ぶと、Windowsのライト/ダーク設定に自動で追従します。
       </p>
+      <div className="settings-field">
+        ツール一覧の位置
+        <div className="theme-options" role="group" aria-label="ツール一覧の位置">
+          <button
+            type="button"
+            className={`theme-option${navigationPosition === "side" ? " theme-option--on" : ""}`}
+            onClick={() => setNavigationPosition("side")}
+          >
+            左側
+          </button>
+          <button
+            type="button"
+            className={`theme-option${navigationPosition === "top" ? " theme-option--on" : ""}`}
+            onClick={() => setNavigationPosition("top")}
+          >
+            上部
+          </button>
+        </div>
+      </div>
     </section>
   );
 }

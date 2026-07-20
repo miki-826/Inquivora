@@ -10,11 +10,14 @@ function preloadProps(path: string) {
   };
 }
 
-export function VerticalNav() {
+export function VerticalNav({ placement = "side" }: { placement?: "side" | "top" }) {
   const mainItems = NAV_ITEMS.filter((item) => item.id !== "settings");
   const settingsItem = NAV_ITEMS.find((item) => item.id === "settings");
   return (
-    <nav className="vertical-nav" aria-label="メインナビゲーション">
+    <nav
+      className={`vertical-nav vertical-nav--${placement}`}
+      aria-label="メインナビゲーション"
+    >
       {mainItems.map((item) => (
         <NavLink
           key={item.id}
