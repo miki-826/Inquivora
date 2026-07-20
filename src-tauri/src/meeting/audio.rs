@@ -90,6 +90,64 @@ fn merge_chunks(chunks: &[Chunk]) -> Vec<i16> {
     out
 }
 
+/// 複数音源のチャンクを、各チャンクの開始時刻に配置して加算合成する（全体を1トラックで聴く用）。
+fn mix_chunks(chunks: &[Chunk]) -> Vec<i16> {
+    let sample_at = |ms: i64| (ms.max(0) * SAMPLE_RATE as i64 / 1000) as usize;
+    let total = chunks
+        .iter()
+        .map(|c| sample_at(c.start_ms) + c.samples.len())
+        .max()
+        .unwrap_or(0);
+    let mut acc = vec![0i32; total];
+    for chunk in chunks {
+        let offset = sample_at(chunk.start_ms);
+        for (i, &sample) in chunk.samples.iter().enumerate() {
+            if let Some(slot) = acc.get_mut(offset + i) {
+                *slot += sample as i32;
+            }
+        }
+    }
+    acc.iter()
+        .map(|&v| v.clamp(i16::MIN as i32, i16::MAX as i32) as i16)
+        .collect()
+}
+
+fn load_chunks(segments: &[TranscriptSegment], source: Option<&str>) -> Vec<Chunk> {
+    let mut chunks: Vec<Chunk> = Vec::new();
+    for segment in segments {
+        if let Some(src) = source {
+            if segment.source != src {
+                continue;
+            }
+        }
+        let Some(path) = segment.audio_chunk_path.as_ref() else {
+            continue;
+        };
+        let Ok(bytes) = std::fs::read(path) else {
+            continue;
+        };
+        if let Ok(samples) = parse_wav_pcm16(&bytes) {
+            chunks.push(Chunk {
+                start_ms: segment.start_ms,
+                end_ms: segment.end_ms,
+                samples,
+            });
+        }
+    }
+    chunks.sort_by_key(|c| c.start_ms);
+    chunks
+}
+
+const MAX_MIX_SAMPLES: usize = 3 * 60 * 60 * SAMPLE_RATE as usize;
+
+fn no_audio_error() -> AppError {
+    AppError::new(
+        "MEETING_NO_AUDIO",
+        "書き出せる録音がありません（無音のみ、または録音チャンクが見つかりません）",
+        false,
+    )
+}
+
 /// 会議の録音を音源ごとに1つのWAVへ書き出す。書き出したファイルパスを返す。
 pub fn export_recording(
     audio_dir: &Path,
@@ -98,26 +156,10 @@ pub fn export_recording(
 ) -> Result<Vec<String>, AppError> {
     let mut written = Vec::new();
     for source in ["mic", "loopback"] {
-        let mut chunks: Vec<Chunk> = Vec::new();
-        for segment in segments.iter().filter(|s| s.source == source) {
-            let Some(path) = segment.audio_chunk_path.as_ref() else {
-                continue;
-            };
-            let Ok(bytes) = std::fs::read(path) else {
-                continue;
-            };
-            if let Ok(samples) = parse_wav_pcm16(&bytes) {
-                chunks.push(Chunk {
-                    start_ms: segment.start_ms,
-                    end_ms: segment.end_ms,
-                    samples,
-                });
-            }
-        }
+        let chunks = load_chunks(segments, Some(source));
         if chunks.is_empty() {
             continue;
         }
-        chunks.sort_by_key(|c| c.start_ms);
         let merged = merge_chunks(&chunks);
         let out_path = audio_dir.join(format!("{meeting_id}_{source}.wav"));
         std::fs::write(&out_path, write_wav_pcm16(&merged, SAMPLE_RATE))
@@ -125,13 +167,38 @@ pub fn export_recording(
         written.push(out_path.to_string_lossy().into_owned());
     }
     if written.is_empty() {
+        return Err(no_audio_error());
+    }
+    Ok(written)
+}
+
+/// 全音源を合成した「通し録音」を1つのWAVへ書き出し、そのパスを返す（全体再生用）。
+pub fn export_mixed(
+    audio_dir: &Path,
+    meeting_id: &str,
+    segments: &[TranscriptSegment],
+) -> Result<String, AppError> {
+    let chunks = load_chunks(segments, None);
+    if chunks.is_empty() {
+        return Err(no_audio_error());
+    }
+    let last_sample = chunks
+        .iter()
+        .map(|c| (c.start_ms.max(0) * SAMPLE_RATE as i64 / 1000) as usize + c.samples.len())
+        .max()
+        .unwrap_or(0);
+    if last_sample > MAX_MIX_SAMPLES {
         return Err(AppError::new(
-            "MEETING_NO_AUDIO",
-            "書き出せる録音がありません（無音のみ、または録音チャンクが見つかりません）",
+            "MEETING_AUDIO_TOO_LONG",
+            "録音が長すぎるためアプリ内で通し再生できません。書き出してフォルダから再生してください",
             false,
         ));
     }
-    Ok(written)
+    let mixed = mix_chunks(&chunks);
+    let out_path = audio_dir.join(format!("{meeting_id}_full.wav"));
+    std::fs::write(&out_path, write_wav_pcm16(&mixed, SAMPLE_RATE))
+        .map_err(|e| audio_error(format!("録音の書き出しに失敗しました: {e}")))?;
+    Ok(out_path.to_string_lossy().into_owned())
 }
 
 #[cfg(test)]
@@ -203,5 +270,43 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let err = export_recording(dir.path(), "m1", &[]).unwrap_err();
         assert_eq!(err.code, "MEETING_NO_AUDIO");
+    }
+
+    #[test]
+    fn 合成は開始時刻に配置して加算する() {
+        // mic: 0msから1000ms(16000サンプル)値10、loopback: 500msから1000ms値20
+        let a = Chunk { start_ms: 0, end_ms: 1000, samples: vec![10i16; 16000] };
+        let b = Chunk { start_ms: 500, end_ms: 1500, samples: vec![20i16; 16000] };
+        let mixed = mix_chunks(&[a, b]);
+        // 全長は1500ms=24000サンプル
+        assert_eq!(mixed.len(), 24000);
+        assert_eq!(mixed[0], 10); // 0-500msはmicのみ
+        assert_eq!(mixed[8000], 30); // 500-1000msは加算 10+20
+        assert_eq!(mixed[20000], 20); // 1000-1500msはloopbackのみ
+    }
+
+    #[test]
+    fn 合成clampは範囲内に収める() {
+        let a = Chunk { start_ms: 0, end_ms: 1, samples: vec![30000i16] };
+        let b = Chunk { start_ms: 0, end_ms: 1, samples: vec![30000i16] };
+        assert_eq!(mix_chunks(&[a, b])[0], i16::MAX);
+    }
+
+    #[test]
+    fn 通し録音を1ファイルへ書き出す() {
+        let dir = tempfile::tempdir().unwrap();
+        let mic = dir.path().join("mic_0000.wav");
+        let loop_ = dir.path().join("loopback_0000.wav");
+        std::fs::write(&mic, write_wav_pcm16(&vec![100i16; 16000], SAMPLE_RATE)).unwrap();
+        std::fs::write(&loop_, write_wav_pcm16(&vec![50i16; 16000], SAMPLE_RATE)).unwrap();
+        let segments = vec![
+            segment("mic", 0, 1000, &mic.to_string_lossy()),
+            segment("loopback", 0, 1000, &loop_.to_string_lossy()),
+        ];
+        let path = export_mixed(dir.path(), "m1", &segments).unwrap();
+        assert!(path.ends_with("m1_full.wav"));
+        let out = parse_wav_pcm16(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(out.len(), 16000);
+        assert_eq!(out[0], 150); // 加算合成
     }
 }

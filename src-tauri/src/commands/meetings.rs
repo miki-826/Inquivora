@@ -190,6 +190,32 @@ pub fn meeting_export_recording(
     audio::export_recording(&dir, &meeting_id, &segments)
 }
 
+/// 全音源を合成した通し録音WAVを用意し、その絶対パスを返す（アプリ内再生用）。
+#[tauri::command]
+pub fn meeting_prepare_full_recording(
+    app: AppHandle,
+    meeting_id: String,
+) -> Result<String, AppError> {
+    let dir = audio::meeting_audio_dir(&app, &meeting_id)?;
+    let segments = {
+        let state = app.state::<DbState>();
+        let conn = state.0.lock().map_err(lock_error)?;
+        meetings::list_segments(&conn, &meeting_id)?
+    };
+    audio::export_mixed(&dir, &meeting_id, &segments)
+}
+
+/// 会議の録音を削除する。
+#[tauri::command]
+pub fn meeting_delete_audio(app: AppHandle, meeting_id: String) -> Result<(), AppError> {
+    let dir = audio::meeting_audio_dir(&app, &meeting_id)?;
+    if dir.is_dir() {
+        std::fs::remove_dir_all(&dir)
+            .map_err(|e| AppError::new("FILE_DELETE_FAILED", format!("録音の削除に失敗しました: {e}"), false))?;
+    }
+    Ok(())
+}
+
 /// 録音フォルダをエクスプローラーで開く。
 #[tauri::command]
 pub fn meeting_reveal_audio(app: AppHandle, meeting_id: String) -> Result<(), AppError> {
