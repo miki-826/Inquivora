@@ -2,9 +2,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { create } from "zustand";
 import {
   addOrActivateTab,
+  clampSplitRatio,
   closeTab as closeTabModel,
   languageForExtension,
   reorderTabs,
+  SPLIT_RATIO_DEFAULT,
   viewTypeForFile,
   type EditorTab,
 } from "../features/editor/editorModel";
@@ -41,6 +43,7 @@ type EditorStore = {
   tabs: EditorTab[];
   activeTabId: string | null;
   secondaryTabId: string | null;
+  splitRatio: number;
   contents: Record<string, string>;
   readModes: Record<string, ReadMode>;
   saveErrors: Record<string, string>;
@@ -51,6 +54,7 @@ type EditorStore = {
   activateTab: (tabId: string) => void;
   openInSplit: (tabId: string) => void;
   closeSplit: () => void;
+  setSplitRatio: (ratio: number) => void;
   reorderTab: (fromId: string, toId: string) => void;
   closeTab: (tabId: string) => Promise<void>;
   closeAllTabs: () => void;
@@ -199,6 +203,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     tabs: [],
     activeTabId: null,
     secondaryTabId: null,
+    splitRatio: SPLIT_RATIO_DEFAULT,
     contents: {},
     readModes: {},
     saveErrors: {},
@@ -299,7 +304,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     },
 
     closeSplit: () => {
-      set({ secondaryTabId: null });
+      set({ secondaryTabId: null, splitRatio: SPLIT_RATIO_DEFAULT });
+    },
+
+    setSplitRatio: (ratio) => {
+      set({ splitRatio: clampSplitRatio(ratio) });
     },
 
     reorderTab: (fromId, toId) => {

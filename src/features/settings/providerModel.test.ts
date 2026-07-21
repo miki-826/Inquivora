@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   FEATURE_KEYS,
+  PROVIDER_PRESETS,
+  PROVIDER_TYPES,
   capabilitiesForType,
   featureLabel,
+  isProviderType,
   parseProviderList,
+  providerTypeLabel,
   validateBaseUrl,
 } from "./providerModel";
 
@@ -76,8 +80,39 @@ describe("capabilitiesForType", () => {
     expect(capabilities).toContain("models.list");
   });
 
-  it("openai_compatibleも既定で同じ構成になる", () => {
-    expect(capabilitiesForType("openai_compatible")).toEqual(capabilitiesForType("openai"));
+  it("全プロバイダーで既定の構成は同じ", () => {
+    for (const type of PROVIDER_TYPES) {
+      expect(capabilitiesForType(type)).toEqual(capabilitiesForType("openai"));
+    }
+  });
+});
+
+describe("プロバイダープリセット", () => {
+  it("対応4AI（Claude/ChatGPT/Gemini/Ollama）が定義されている", () => {
+    expect([...PROVIDER_TYPES]).toEqual(["anthropic", "openai", "gemini", "ollama"]);
+  });
+
+  it("各プリセットに既定URL・既定モデル・候補モデルがある", () => {
+    for (const type of PROVIDER_TYPES) {
+      const preset = PROVIDER_PRESETS[type];
+      expect(preset.baseUrl.length).toBeGreaterThan(0);
+      expect(preset.models).toContain(preset.defaultModel);
+      expect(providerTypeLabel(type)).toBe(preset.label);
+    }
+  });
+
+  it("OllamaのみAPIキー不要・URL変更可、他はキー必須・URL固定", () => {
+    expect(PROVIDER_PRESETS.ollama.needsApiKey).toBe(false);
+    expect(PROVIDER_PRESETS.ollama.editableBaseUrl).toBe(true);
+    for (const type of ["anthropic", "openai", "gemini"] as const) {
+      expect(PROVIDER_PRESETS[type].needsApiKey).toBe(true);
+      expect(PROVIDER_PRESETS[type].editableBaseUrl).toBe(false);
+    }
+  });
+
+  it("isProviderTypeは既知の型のみ受理する", () => {
+    expect(isProviderType("anthropic")).toBe(true);
+    expect(isProviderType("openai_compatible")).toBe(false);
   });
 });
 

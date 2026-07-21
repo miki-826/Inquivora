@@ -34,6 +34,8 @@ pub struct ApiProviderProfile {
     pub auth_type: String,
     pub organization_id: Option<String>,
     pub project_id: Option<String>,
+    pub model_id: Option<String>,
+    pub custom_prompt: Option<String>,
     pub default_headers: HashMap<String, String>,
     pub timeout_ms: i64,
     pub capabilities: Vec<String>,
@@ -60,6 +62,10 @@ pub struct ProviderInput {
     #[serde(default)]
     pub project_id: Option<String>,
     #[serde(default)]
+    pub model_id: Option<String>,
+    #[serde(default)]
+    pub custom_prompt: Option<String>,
+    #[serde(default)]
     pub default_headers: HashMap<String, String>,
     #[serde(default = "default_timeout_ms")]
     pub timeout_ms: i64,
@@ -78,6 +84,10 @@ pub struct ProviderPatch {
     pub organization_id: Option<Option<String>>,
     #[serde(deserialize_with = "double_option")]
     pub project_id: Option<Option<String>>,
+    #[serde(deserialize_with = "double_option")]
+    pub model_id: Option<Option<String>>,
+    #[serde(deserialize_with = "double_option")]
+    pub custom_prompt: Option<Option<String>>,
     pub default_headers: Option<HashMap<String, String>>,
     pub timeout_ms: Option<i64>,
     pub capabilities: Option<Vec<String>>,
@@ -152,6 +162,8 @@ fn row_to_profile(row: &Row) -> rusqlite::Result<ApiProviderProfile> {
         auth_type: row.get("auth_type")?,
         organization_id: row.get("organization_id")?,
         project_id: row.get("project_id")?,
+        model_id: row.get("model_id")?,
+        custom_prompt: row.get("custom_prompt")?,
         default_headers: serde_json::from_str(&headers_json).unwrap_or_default(),
         timeout_ms: row.get("timeout_ms")?,
         capabilities: serde_json::from_str(&capabilities_json).unwrap_or_default(),
@@ -164,7 +176,7 @@ fn row_to_profile(row: &Row) -> rusqlite::Result<ApiProviderProfile> {
 }
 
 const PROFILE_COLUMNS: &str = "id, display_name, provider_type, base_url, auth_type, credential_target, \
-     organization_id, project_id, default_headers_json, timeout_ms, capabilities_json, enabled, \
+     organization_id, project_id, model_id, custom_prompt, default_headers_json, timeout_ms, capabilities_json, enabled, \
      last_test_status, last_tested_at, created_at, updated_at";
 
 pub fn create_provider(conn: &Connection, input: ProviderInput) -> Result<ApiProviderProfile, AppError> {
@@ -175,9 +187,9 @@ pub fn create_provider(conn: &Connection, input: ProviderInput) -> Result<ApiPro
     conn.execute(
         "INSERT INTO api_provider_profiles
             (id, display_name, provider_type, base_url, auth_type, credential_target,
-             organization_id, project_id, default_headers_json, timeout_ms, capabilities_json,
+             organization_id, project_id, model_id, custom_prompt, default_headers_json, timeout_ms, capabilities_json,
              enabled, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 1, ?12, ?12)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 1, ?14, ?14)",
         rusqlite::params![
             id,
             input.display_name,
@@ -187,6 +199,8 @@ pub fn create_provider(conn: &Connection, input: ProviderInput) -> Result<ApiPro
             crate::api::credentials::credential_target(&id),
             input.organization_id,
             input.project_id,
+            input.model_id,
+            input.custom_prompt,
             serde_json::to_string(&input.default_headers).unwrap_or_else(|_| "{}".to_string()),
             input.timeout_ms,
             serde_json::to_string(&input.capabilities).unwrap_or_else(|_| "[]".to_string()),
@@ -229,11 +243,14 @@ pub fn update_provider(
     validate_headers(&default_headers)?;
     let organization_id = patch.organization_id.unwrap_or(current.organization_id);
     let project_id = patch.project_id.unwrap_or(current.project_id);
+    let model_id = patch.model_id.unwrap_or(current.model_id);
+    let custom_prompt = patch.custom_prompt.unwrap_or(current.custom_prompt);
     conn.execute(
         "UPDATE api_provider_profiles SET
             display_name = ?2, provider_type = ?3, base_url = ?4, auth_type = ?5,
             organization_id = ?6, project_id = ?7, default_headers_json = ?8,
-            timeout_ms = ?9, capabilities_json = ?10, updated_at = ?11
+            timeout_ms = ?9, capabilities_json = ?10, updated_at = ?11,
+            model_id = ?12, custom_prompt = ?13
          WHERE id = ?1",
         rusqlite::params![
             id,
@@ -248,6 +265,8 @@ pub fn update_provider(
             serde_json::to_string(&patch.capabilities.unwrap_or(current.capabilities))
                 .unwrap_or_else(|_| "[]".to_string()),
             Utc::now().to_rfc3339(),
+            model_id,
+            custom_prompt,
         ],
     )
     .map_err(map_unique_violation)?;
@@ -481,6 +500,8 @@ mod tests {
             auth_type: "bearer".to_string(),
             organization_id: None,
             project_id: None,
+            model_id: None,
+            custom_prompt: None,
             default_headers: Default::default(),
             timeout_ms: 60000,
             capabilities: vec![
@@ -537,6 +558,22 @@ mod tests {
         assert!(created.enabled);
         let fetched = get_provider(&conn, &created.id).unwrap();
         assert_eq!(fetched.capabilities, created.capabilities);
+    }
+
+    #[test]
+    fn model_idとcustom_promptを保存して更新できる() {
+        let (_dir, conn) = open_temp_db();
+        let mut input = sample_input("A");
+        input.model_id = Some("gpt-4o-mini".to_string());
+        input.custom_prompt = Some("敬体でまとめて".to_string());
+        let created = create_provider(&conn, input).unwrap();
+        assert_eq!(created.model_id.as_deref(), Some("gpt-4o-mini"));
+        assert_eq!(created.custom_prompt.as_deref(), Some("敬体でまとめて"));
+        let patch: ProviderPatch =
+            serde_json::from_str(r#"{"modelId":"claude-sonnet-5","customPrompt":null}"#).unwrap();
+        let updated = update_provider(&conn, &created.id, patch).unwrap();
+        assert_eq!(updated.model_id.as_deref(), Some("claude-sonnet-5"));
+        assert!(updated.custom_prompt.is_none());
     }
 
     #[test]

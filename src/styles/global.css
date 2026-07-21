@@ -1388,12 +1388,24 @@ input[type="radio"] {
 }
 
 .editor-area__content--split > .editor-pane {
-  flex: 1 1 50%;
-  width: 50%;
+  min-width: 0;
 }
 
 .editor-pane--secondary {
   border-left: 1px solid var(--color-border);
+}
+
+.editor-split-resize {
+  flex: 0 0 5px;
+  align-self: stretch;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+
+.editor-split-resize:hover,
+.editor-split-resize--active {
+  background: var(--color-primary);
 }
 
 .editor-pane__body {
@@ -2291,6 +2303,14 @@ input[type="radio"] {
 .provider-card__disabled {
   font-size: 11px;
   color: var(--color-warning);
+}
+
+.provider-card__badge {
+  font-size: 11px;
+  color: #fff;
+  background: var(--color-primary);
+  border-radius: 3px;
+  padding: 1px 6px;
 }
 
 .provider-card__meta {

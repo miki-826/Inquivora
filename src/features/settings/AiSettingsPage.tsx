@@ -11,15 +11,18 @@ import {
 } from "./whisperModel";
 import type { ConnectionTestResult, FeatureBinding } from "../../services/providers";
 import {
-  ACTIVE_FEATURE_KEYS,
+  PROVIDER_PRESETS,
+  PROVIDER_TYPES,
   capabilitiesForType,
-  featureLabel,
+  isProviderType,
+  providerTypeLabel,
   validateBaseUrl,
-  type FeatureKey,
   type Provider,
   type ProviderType,
 } from "./providerModel";
 import { SettingsNav } from "./SettingsNav";
+
+const SUMMARY_FEATURE_KEY = "meeting.summary";
 
 function messageOf(error: unknown): string {
   if (error && typeof error === "object" && "message" in error) {
@@ -30,77 +33,86 @@ function messageOf(error: unknown): string {
 
 type FormState = {
   id: string | null;
-  displayName: string;
   providerType: ProviderType;
   baseUrl: string;
-  authType: string;
   apiKey: string;
-  organizationId: string;
-  projectId: string;
-  timeoutSeconds: string;
+  modelId: string;
+  customPrompt: string;
 };
 
 function emptyForm(): FormState {
+  const preset = PROVIDER_PRESETS.anthropic;
   return {
     id: null,
-    displayName: "",
-    providerType: "openai",
-    baseUrl: "https://api.openai.com/v1",
-    authType: "bearer",
+    providerType: "anthropic",
+    baseUrl: preset.baseUrl,
     apiKey: "",
-    organizationId: "",
-    projectId: "",
-    timeoutSeconds: "60",
+    modelId: preset.defaultModel,
+    customPrompt: "",
   };
 }
 
 function formFromProvider(provider: Provider): FormState {
+  const providerType: ProviderType = isProviderType(provider.providerType)
+    ? provider.providerType
+    : "anthropic";
+  const preset = PROVIDER_PRESETS[providerType];
   return {
     id: provider.id,
-    displayName: provider.displayName,
-    providerType: provider.providerType === "openai_compatible" ? "openai_compatible" : "openai",
-    baseUrl: provider.baseUrl,
-    authType: provider.authType,
+    providerType,
+    baseUrl: provider.baseUrl || preset.baseUrl,
     apiKey: "",
-    organizationId: provider.organizationId ?? "",
-    projectId: provider.projectId ?? "",
-    timeoutSeconds: String(Math.round(provider.timeoutMs / 1000)),
+    modelId: provider.modelId ?? preset.defaultModel,
+    customPrompt: provider.customPrompt ?? "",
   };
+}
+
+/// 表示名は種類ラベルから自動生成する。同種を複数登録した場合は連番を付けて一意にする。
+function uniqueDisplayName(base: string, providers: Provider[], selfId: string | null): string {
+  const taken = new Set(providers.filter((p) => p.id !== selfId).map((p) => p.displayName));
+  if (!taken.has(base)) return base;
+  for (let i = 2; i < 100; i += 1) {
+    const candidate = `${base} ${i}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+  return `${base} ${Date.now()}`;
 }
 
 function ProviderForm({
   form,
   setForm,
+  providers,
   onSaved,
   onCancel,
 }: {
   form: FormState;
   setForm: (form: FormState) => void;
+  providers: Provider[];
   onSaved: () => Promise<void>;
   onCancel: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const preset = PROVIDER_PRESETS[form.providerType];
 
   const save = async () => {
-    if (form.displayName.trim() === "") {
-      setError("表示名を入力してください");
-      return;
+    const model = form.modelId.trim() || preset.defaultModel;
+    const baseUrl = preset.editableBaseUrl ? form.baseUrl.trim() : preset.baseUrl;
+    if (preset.editableBaseUrl) {
+      const urlError = validateBaseUrl(baseUrl);
+      if (urlError) {
+        setError(urlError);
+        return;
+      }
     }
-    const urlError = validateBaseUrl(form.baseUrl);
-    if (urlError) {
-      setError(urlError);
-      return;
-    }
-    const timeoutSeconds = Number(form.timeoutSeconds);
     const input = {
-      displayName: form.displayName.trim(),
+      displayName: uniqueDisplayName(providerTypeLabel(form.providerType), providers, form.id),
       providerType: form.providerType,
-      baseUrl: form.baseUrl.trim(),
-      authType: form.authType,
-      organizationId: form.organizationId.trim() || null,
-      projectId: form.projectId.trim() || null,
-      timeoutMs: Number.isFinite(timeoutSeconds) && timeoutSeconds > 0 ? timeoutSeconds * 1000 : 60000,
+      baseUrl,
+      authType: preset.authType,
+      modelId: model,
+      customPrompt: form.customPrompt.trim() || null,
+      timeoutMs: 60000,
       capabilities: capabilitiesForType(form.providerType),
     };
     setSaving(true);
@@ -113,9 +125,18 @@ function ProviderForm({
         const created = await api.createProvider(input);
         providerId = created?.id ?? null;
       }
-      // §10.4 APIキーは保存コマンドへ渡した直後にフォーム状態から破棄する
-      if (providerId && form.apiKey.trim() !== "") {
+      // APIキーは保存コマンドへ渡した直後にフォーム状態から破棄する
+      if (providerId && preset.needsApiKey && form.apiKey.trim() !== "") {
         await api.setProviderSecret(providerId, form.apiKey);
+      }
+      // 登録したAIを議事録まとめに自動割当（この AI を使う）
+      if (providerId) {
+        await api.setFeatureBinding(SUMMARY_FEATURE_KEY, {
+          providerProfileId: providerId,
+          modelId: model,
+          fallbackProviderProfileId: null,
+          fallbackModelId: null,
+        });
       }
       setForm({ ...form, apiKey: "" });
       await onSaved();
@@ -128,90 +149,79 @@ function ProviderForm({
 
   return (
     <section className="settings-section">
-      <h2 className="settings-section__title">
-        {form.id ? "AIを編集" : "AIを追加"}
-      </h2>
-      <label className="settings-field">
-        名前（自由入力）
-        <input
-          type="text"
-          value={form.displayName}
-          placeholder="例: OpenAI（自分用）"
-          onChange={(e) => setForm({ ...form, displayName: e.target.value })}
-        />
-      </label>
+      <h2 className="settings-section__title">{form.id ? "AIを編集" : "AIを追加"}</h2>
       <label className="settings-field">
         AIの種類
         <select
           value={form.providerType}
           onChange={(e) => {
             const providerType = e.target.value as ProviderType;
+            const next = PROVIDER_PRESETS[providerType];
             setForm({
               ...form,
               providerType,
-              baseUrl:
-                providerType === "openai" && form.baseUrl.trim() === ""
-                  ? "https://api.openai.com/v1"
-                  : form.baseUrl,
+              baseUrl: next.baseUrl,
+              modelId: next.defaultModel,
             });
           }}
         >
-          <option value="openai">OpenAI</option>
-          <option value="openai_compatible">OpenAI互換</option>
+          {PROVIDER_TYPES.map((type) => (
+            <option key={type} value={type}>
+              {PROVIDER_PRESETS[type].label}
+            </option>
+          ))}
         </select>
       </label>
+      {preset.editableBaseUrl && (
+        <label className="settings-field">
+          接続先URL
+          <input
+            type="text"
+            value={form.baseUrl}
+            placeholder={preset.baseUrl}
+            onChange={(e) => setForm({ ...form, baseUrl: e.target.value })}
+          />
+        </label>
+      )}
+      {preset.needsApiKey && (
+        <label className="settings-field">
+          APIキー{form.id ? "（変更する場合のみ入力）" : ""}
+          <input
+            type="password"
+            value={form.apiKey}
+            autoComplete="off"
+            placeholder="sk-..."
+            onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
+          />
+        </label>
+      )}
       <label className="settings-field">
-        Base URL
+        モデル
         <input
           type="text"
-          value={form.baseUrl}
-          placeholder="https://api.openai.com/v1"
-          onChange={(e) => setForm({ ...form, baseUrl: e.target.value })}
+          list={`models-${form.providerType}`}
+          value={form.modelId}
+          placeholder={preset.defaultModel}
+          onChange={(e) => setForm({ ...form, modelId: e.target.value })}
         />
+        <datalist id={`models-${form.providerType}`}>
+          {preset.models.map((model) => (
+            <option key={model} value={model} />
+          ))}
+        </datalist>
       </label>
       <label className="settings-field">
-        認証方式
-        <select value={form.authType} onChange={(e) => setForm({ ...form, authType: e.target.value })}>
-          <option value="bearer">Bearer</option>
-          <option value="x-api-key">x-api-key</option>
-          <option value="none">なし</option>
-        </select>
-      </label>
-      <label className="settings-field">
-        APIキー{form.id ? "（変更する場合のみ入力）" : ""}
-        <input
-          type="password"
-          value={form.apiKey}
-          autoComplete="off"
-          placeholder="sk-..."
-          onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
+        プロンプト（任意）
+        <textarea
+          rows={4}
+          value={form.customPrompt}
+          placeholder="議事録のまとめ方の希望を書いてください（例: 決定事項を箇条書きで／敬体で など）"
+          onChange={(e) => setForm({ ...form, customPrompt: e.target.value })}
         />
       </label>
-      <label className="settings-field">
-        Organization ID（任意）
-        <input
-          type="text"
-          value={form.organizationId}
-          onChange={(e) => setForm({ ...form, organizationId: e.target.value })}
-        />
-      </label>
-      <label className="settings-field">
-        Project ID（任意）
-        <input
-          type="text"
-          value={form.projectId}
-          onChange={(e) => setForm({ ...form, projectId: e.target.value })}
-        />
-      </label>
-      <label className="settings-field">
-        タイムアウト（秒）
-        <input
-          type="number"
-          min={1}
-          value={form.timeoutSeconds}
-          onChange={(e) => setForm({ ...form, timeoutSeconds: e.target.value })}
-        />
-      </label>
+      <p className="settings-note">
+        プロンプトは議事録まとめAIへの追加の指示として使われます（出力の形式は保たれます）。
+      </p>
       {error && (
         <p className="settings-actions__error" role="alert">
           {error}
@@ -231,19 +241,20 @@ function ProviderForm({
 
 function ProviderCard({
   provider,
-  testResult,
+  isSummaryProvider,
   onEdit,
+  onUse,
   onReload,
 }: {
   provider: Provider;
-  testResult: ConnectionTestResult | undefined;
+  isSummaryProvider: boolean;
   onEdit: () => void;
+  onUse: () => Promise<void>;
   onReload: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<ConnectionTestResult | undefined>(testResult);
-  const [modelList, setModelList] = useState<string[] | null>(null);
+  const [result, setResult] = useState<ConnectionTestResult | undefined>(undefined);
 
   const run = async (label: string, action: () => Promise<void>) => {
     setBusy(label);
@@ -257,16 +268,18 @@ function ProviderCard({
     }
   };
 
+  const typeLabel = isProviderType(provider.providerType)
+    ? providerTypeLabel(provider.providerType)
+    : provider.providerType;
+
   return (
     <div className="provider-card">
       <div className="provider-card__header">
-        <span className="provider-card__name">{provider.displayName}</span>
-        <span className="provider-card__type">
-          {provider.providerType === "openai" ? "OpenAI" : "OpenAI互換"}
-        </span>
+        <span className="provider-card__name">{typeLabel}</span>
+        {isSummaryProvider && <span className="provider-card__badge">議事録まとめに使用中</span>}
         {!provider.enabled && <span className="provider-card__disabled">無効</span>}
       </div>
-      <div className="provider-card__meta">{provider.baseUrl}</div>
+      {provider.modelId && <div className="provider-card__meta">モデル: {provider.modelId}</div>}
       <div className="provider-card__meta">
         APIキー: {provider.hasSecret ? "設定済み" : "未設定"}
         {provider.lastTestedAt &&
@@ -278,12 +291,6 @@ function ProviderCard({
           {result.latencyMs != null && `（${result.latencyMs}ms）`}
         </div>
       )}
-      {modelList && (
-        <div className="provider-card__meta">
-          モデル: {modelList.slice(0, 8).join(", ")}
-          {modelList.length > 8 && ` ほか${modelList.length - 8}件`}
-        </div>
-      )}
       {error && (
         <div className="provider-card__error" role="alert">
           {error}
@@ -293,6 +300,15 @@ function ProviderCard({
         <button type="button" onClick={onEdit}>
           編集
         </button>
+        {!isSummaryProvider && provider.enabled && (
+          <button
+            type="button"
+            disabled={busy !== null}
+            onClick={() => void run("use", onUse)}
+          >
+            {busy === "use" ? "設定中…" : "このAIを使う"}
+          </button>
+        )}
         <button
           type="button"
           disabled={busy !== null}
@@ -304,17 +320,6 @@ function ProviderCard({
           }
         >
           {busy === "test" ? "テスト中…" : "接続テスト"}
-        </button>
-        <button
-          type="button"
-          disabled={busy !== null}
-          onClick={() =>
-            void run("models", async () => {
-              setModelList(await api.listProviderModels(provider.id));
-            })
-          }
-        >
-          {busy === "models" ? "取得中…" : "モデル一覧"}
         </button>
         <button
           type="button"
@@ -333,7 +338,7 @@ function ProviderCard({
           className="provider-card__danger"
           disabled={busy !== null}
           onClick={() => {
-            if (window.confirm(`${provider.displayName} を削除しますか？APIキーも削除されます。`)) {
+            if (window.confirm(`${typeLabel} を削除しますか？APIキーも削除されます。`)) {
               void run("delete", async () => {
                 await api.deleteProvider(provider.id);
                 await onReload();
@@ -344,158 +349,6 @@ function ProviderCard({
           削除
         </button>
       </div>
-    </div>
-  );
-}
-
-function BindingRow({
-  featureKey,
-  providers,
-}: {
-  featureKey: FeatureKey;
-  providers: Provider[];
-}) {
-  const [binding, setBinding] = useState<FeatureBinding | null>(null);
-  const [loaded, setLoaded] = useState(false);
-  const [models, setModels] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    void api
-      .getFeatureBinding(featureKey)
-      .then((value) => {
-        if (active) {
-          setBinding(value);
-          setLoaded(true);
-        }
-      })
-      .catch((err) => {
-        if (active) {
-          setError(messageOf(err));
-          setLoaded(true);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [featureKey]);
-
-  const save = (providerProfileId: string | null, modelId: string | null) => {
-    const next: FeatureBinding = {
-      featureKey,
-      providerProfileId,
-      modelId,
-      fallbackProviderProfileId: binding?.fallbackProviderProfileId ?? null,
-      fallbackModelId: binding?.fallbackModelId ?? null,
-      updatedAt: new Date().toISOString(),
-    };
-    setBinding(next);
-    void api
-      .setFeatureBinding(featureKey, {
-        providerProfileId,
-        modelId,
-        fallbackProviderProfileId: next.fallbackProviderProfileId,
-        fallbackModelId: next.fallbackModelId,
-      })
-      .catch((err) => setError(messageOf(err)));
-  };
-
-  const saveFallback = (providerProfileId: string | null, modelId: string | null) => {
-    const next: FeatureBinding = {
-      featureKey,
-      providerProfileId: binding?.providerProfileId ?? null,
-      modelId: binding?.modelId ?? null,
-      fallbackProviderProfileId: providerProfileId,
-      fallbackModelId: modelId,
-      updatedAt: new Date().toISOString(),
-    };
-    setBinding(next);
-    void api.setFeatureBinding(featureKey, {
-      providerProfileId: next.providerProfileId,
-      modelId: next.modelId,
-      fallbackProviderProfileId: providerProfileId,
-      fallbackModelId: modelId,
-    }).catch((err) => setError(messageOf(err)));
-  };
-
-  const fetchModels = async () => {
-    if (!binding?.providerProfileId) {
-      return;
-    }
-    try {
-      setModels(await api.listProviderModels(binding.providerProfileId));
-      setError(null);
-    } catch (err) {
-      setError(messageOf(err));
-    }
-  };
-
-  if (!loaded) {
-    return null;
-  }
-
-  const datalistId = `models-${featureKey}`;
-  return (
-    <div className="binding-row">
-      <div className="binding-row__label">{featureLabel(featureKey)}</div>
-      <div className="binding-row__group">
-        <span className="binding-row__group-label">使用</span>
-        <select
-          aria-label={`${featureLabel(featureKey)}のProvider`}
-          value={binding?.providerProfileId ?? ""}
-          onChange={(e) => save(e.target.value || null, binding?.modelId ?? null)}
-        >
-          <option value="">未設定</option>
-          {providers
-            .filter((p) => p.enabled)
-            .map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.displayName}
-              </option>
-            ))}
-        </select>
-        <input
-          type="text"
-          list={datalistId}
-          placeholder="モデルID（手入力可）"
-          value={binding?.modelId ?? ""}
-          onChange={(e) => save(binding?.providerProfileId ?? null, e.target.value || null)}
-        />
-        <datalist id={datalistId}>
-          {models.map((model) => (
-            <option key={model} value={model} />
-          ))}
-        </datalist>
-        <button type="button" disabled={!binding?.providerProfileId} onClick={() => void fetchModels()}>
-          取得
-        </button>
-      </div>
-      <div className="binding-row__group">
-        <span className="binding-row__group-label">予備</span>
-        <select
-          aria-label={`${featureLabel(featureKey)}の予備Provider`}
-          value={binding?.fallbackProviderProfileId ?? ""}
-          onChange={(e) => saveFallback(e.target.value || null, binding?.fallbackModelId ?? null)}
-        >
-          <option value="">未設定</option>
-          {providers.filter((p) => p.enabled && p.id !== binding?.providerProfileId).map((p) => (
-            <option key={p.id} value={p.id}>{p.displayName}</option>
-          ))}
-        </select>
-        <input
-          type="text"
-          aria-label={`${featureLabel(featureKey)}の予備モデルID`}
-          placeholder="予備モデルID"
-          value={binding?.fallbackModelId ?? ""}
-          onChange={(e) => saveFallback(binding?.fallbackProviderProfileId ?? null, e.target.value || null)}
-        />
-      </div>
-      {error && (
-        <span className="settings-actions__error" role="alert">
-          {error}
-        </span>
-      )}
     </div>
   );
 }
@@ -585,8 +438,7 @@ function WhisperSection() {
     <section className="settings-section">
       <h2 className="settings-section__title">ローカル文字起こし（内蔵Whisper）</h2>
       <p className="settings-note">
-        APIを設定しなくても、選択したWhisperモデルで文字起こしをローカル処理します。
-        API Providerを「バッチ文字起こし」に割り当てた場合はAPIを優先します。
+        文字起こしはAPIを設定しなくても、選択したWhisperモデルでPC内だけで処理します。
       </p>
       {error && (
         <p className="settings-actions__error" role="alert">
@@ -597,55 +449,53 @@ function WhisperSection() {
         {models.map((model) => {
           const hint = modelHint(model.name);
           return (
-          <div key={model.name} className="whisper-model">
-            <label className="whisper-model__select">
-              <input
-                type="radio"
-                name="whisper-model"
-                checked={model.selected}
-                onChange={() => void select(model.name)}
-              />
-              <span className="whisper-model__name">
-                {model.displayName}
-                {hint.recommended && <span className="whisper-model__badge">推奨</span>}
-              </span>
-              <span className="whisper-model__size">{formatModelSize(model.sizeMb)}</span>
-            </label>
-            <p className="whisper-model__hint">{hint.tagline}</p>
-            {model.downloaded ? (
-              <div className="whisper-model__actions">
-                <span className="whisper-model__downloaded">ダウンロード済み</span>
+            <div key={model.name} className="whisper-model">
+              <label className="whisper-model__select">
+                <input
+                  type="radio"
+                  name="whisper-model"
+                  checked={model.selected}
+                  onChange={() => void select(model.name)}
+                />
+                <span className="whisper-model__name">
+                  {model.displayName}
+                  {hint.recommended && <span className="whisper-model__badge">推奨</span>}
+                </span>
+                <span className="whisper-model__size">{formatModelSize(model.sizeMb)}</span>
+              </label>
+              <p className="whisper-model__hint">{hint.tagline}</p>
+              {model.downloaded ? (
+                <div className="whisper-model__actions">
+                  <span className="whisper-model__downloaded">ダウンロード済み</span>
+                  <button
+                    type="button"
+                    className="provider-card__danger"
+                    disabled={model.selected}
+                    title={model.selected ? "使用中のモデルは削除できません" : undefined}
+                    onClick={() => void remove(model.name, model.displayName)}
+                  >
+                    削除
+                  </button>
+                </div>
+              ) : (
                 <button
                   type="button"
-                  className="provider-card__danger"
-                  disabled={model.selected}
-                  title={model.selected ? "使用中のモデルは削除できません" : undefined}
-                  onClick={() => void remove(model.name, model.displayName)}
+                  disabled={downloading !== null}
+                  onClick={() => void download(model.name)}
                 >
-                  削除
+                  {downloading === model.name
+                    ? percent !== null
+                      ? `ダウンロード中… ${percent}%`
+                      : "ダウンロード中…"
+                    : "ダウンロード"}
                 </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                disabled={downloading !== null}
-                onClick={() => void download(model.name)}
-              >
-                {downloading === model.name
-                  ? percent !== null
-                    ? `ダウンロード中… ${percent}%`
-                    : "ダウンロード中…"
-                  : "ダウンロード"}
-              </button>
-            )}
-          </div>
+              )}
+            </div>
           );
         })}
       </div>
       {downloadedSizeMb > 0 && (
-        <p className="settings-note">
-          ダウンロード済み合計: {formatModelSize(downloadedSizeMb)}
-        </p>
+        <p className="settings-note">ダウンロード済み合計: {formatModelSize(downloadedSizeMb)}</p>
       )}
     </section>
   );
@@ -681,12 +531,18 @@ function UsageSection() {
 
 export function AiSettingsPage() {
   const [providers, setProviders] = useState<Provider[]>([]);
+  const [summaryBinding, setSummaryBinding] = useState<FeatureBinding | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     try {
-      setProviders(await api.listProviders());
+      const [nextProviders, binding] = await Promise.all([
+        api.listProviders(),
+        api.getFeatureBinding(SUMMARY_FEATURE_KEY),
+      ]);
+      setProviders(nextProviders);
+      setSummaryBinding(binding);
       setError(null);
     } catch (err) {
       setError(messageOf(err));
@@ -694,11 +550,25 @@ export function AiSettingsPage() {
   }, []);
 
   useEffect(() => {
-    void api
-      .listProviders()
-      .then(setProviders)
+    void Promise.all([api.listProviders(), api.getFeatureBinding(SUMMARY_FEATURE_KEY)])
+      .then(([nextProviders, binding]) => {
+        setProviders(nextProviders);
+        setSummaryBinding(binding);
+      })
       .catch((err) => setError(messageOf(err)));
   }, []);
+
+  const assignToSummary = async (provider: Provider) => {
+    await api.setFeatureBinding(SUMMARY_FEATURE_KEY, {
+      providerProfileId: provider.id,
+      modelId: provider.modelId ?? PROVIDER_PRESETS[
+        isProviderType(provider.providerType) ? provider.providerType : "anthropic"
+      ].defaultModel,
+      fallbackProviderProfileId: null,
+      fallbackModelId: null,
+    });
+    await reload();
+  };
 
   return (
     <ThreePaneLayout left={<SettingsNav />}>
@@ -706,7 +576,7 @@ export function AiSettingsPage() {
         <section className="settings-section">
           <h2 className="settings-section__title">AI（接続先）</h2>
           <p className="settings-note">
-            要約や高精度な文字起こしに使うAIを登録します。APIキーはあなたのPCのWindows資格情報マネージャーにのみ保存され、アプリのデータベースやログには残りません。
+            議事録のまとめに使うAIを登録します。AIの種類を選び、APIキーとモデル、必要なら独自のプロンプトを入れるだけです。APIキーはあなたのPCのWindows資格情報マネージャーにのみ保存され、アプリのデータベースやログには残りません。
           </p>
           {error && (
             <p className="settings-actions__error" role="alert">
@@ -717,8 +587,9 @@ export function AiSettingsPage() {
             <ProviderCard
               key={provider.id}
               provider={provider}
-              testResult={undefined}
+              isSummaryProvider={summaryBinding?.providerProfileId === provider.id}
               onEdit={() => setForm(formFromProvider(provider))}
+              onUse={() => assignToSummary(provider)}
               onReload={reload}
             />
           ))}
@@ -734,6 +605,7 @@ export function AiSettingsPage() {
           <ProviderForm
             form={form}
             setForm={setForm}
+            providers={providers}
             onSaved={async () => {
               setForm(null);
               await reload();
@@ -742,15 +614,6 @@ export function AiSettingsPage() {
           />
         )}
         <WhisperSection />
-        <section className="settings-section">
-          <h2 className="settings-section__title">用途別モデル設定</h2>
-          <p className="settings-note">
-            モデル一覧の取得に失敗しても、モデルIDを直接入力すれば使用できます。
-          </p>
-          {ACTIVE_FEATURE_KEYS.map((key) => (
-            <BindingRow key={key} featureKey={key} providers={providers} />
-          ))}
-        </section>
         <UsageSection />
       </div>
     </ThreePaneLayout>

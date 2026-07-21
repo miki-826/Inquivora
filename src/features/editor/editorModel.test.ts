@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   addOrActivateTab,
+  clampSplitRatio,
   closeTab,
   languageForExtension,
   reorderTabs,
+  SPLIT_RATIO_DEFAULT,
+  SPLIT_RATIO_MAX,
+  SPLIT_RATIO_MIN,
   viewTypeForFile,
   type EditorTab,
 } from "./editorModel";
@@ -23,6 +27,23 @@ function tab(id: string, path: string): EditorTab {
     viewType: "editor",
   };
 }
+
+describe("clampSplitRatio", () => {
+  it("下限・上限でクランプする", () => {
+    expect(clampSplitRatio(0.05)).toBe(SPLIT_RATIO_MIN);
+    expect(clampSplitRatio(0.95)).toBe(SPLIT_RATIO_MAX);
+  });
+
+  it("範囲内の値はそのまま返す", () => {
+    expect(clampSplitRatio(0.5)).toBe(0.5);
+    expect(clampSplitRatio(0.3)).toBe(0.3);
+  });
+
+  it("不正な値は既定値へ戻す", () => {
+    expect(clampSplitRatio(Number.NaN)).toBe(SPLIT_RATIO_DEFAULT);
+    expect(clampSplitRatio(Number.POSITIVE_INFINITY)).toBe(SPLIT_RATIO_DEFAULT);
+  });
+});
 
 describe("reorderTabs", () => {
   const tabs = [tab("a", "a.md"), tab("b", "b.md"), tab("c", "c.md")];

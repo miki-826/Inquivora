@@ -113,6 +113,93 @@ pub fn parse_chat_completion_content(body: &str) -> Result<String, AppError> {
         .ok_or_else(|| AppError::new("API_RESPONSE_INVALID", "AI応答に本文がありません", false))
 }
 
+#[derive(Debug, Deserialize)]
+struct AnthropicResponse {
+    content: Vec<AnthropicBlock>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AnthropicBlock {
+    #[serde(default, rename = "type")]
+    block_type: String,
+    #[serde(default)]
+    text: String,
+}
+
+/// Anthropic Messages API（/v1/messages）応答からテキストを取り出す。
+pub fn parse_anthropic_content(body: &str) -> Result<String, AppError> {
+    let parsed: AnthropicResponse = serde_json::from_str(body)
+        .map_err(|_| AppError::new("API_RESPONSE_INVALID", "AI応答を解釈できません", false))?;
+    let text: String = parsed
+        .content
+        .into_iter()
+        .filter(|block| block.block_type.is_empty() || block.block_type == "text")
+        .map(|block| block.text)
+        .collect();
+    if text.trim().is_empty() {
+        return Err(AppError::new("API_RESPONSE_INVALID", "AI応答に本文がありません", false));
+    }
+    Ok(text)
+}
+
+#[derive(Debug, Deserialize)]
+struct GeminiResponse {
+    candidates: Vec<GeminiCandidate>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GeminiCandidate {
+    content: GeminiContent,
+}
+
+#[derive(Debug, Deserialize)]
+struct GeminiContent {
+    #[serde(default)]
+    parts: Vec<GeminiPart>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GeminiPart {
+    #[serde(default)]
+    text: String,
+}
+
+/// Gemini（generateContent）応答から最初の候補のテキストを取り出す。
+pub fn parse_gemini_content(body: &str) -> Result<String, AppError> {
+    let parsed: GeminiResponse = serde_json::from_str(body)
+        .map_err(|_| AppError::new("API_RESPONSE_INVALID", "AI応答を解釈できません", false))?;
+    let text: String = parsed
+        .candidates
+        .into_iter()
+        .next()
+        .map(|candidate| candidate.content.parts.into_iter().map(|part| part.text).collect())
+        .unwrap_or_default();
+    if text.trim().is_empty() {
+        return Err(AppError::new("API_RESPONSE_INVALID", "AI応答に本文がありません", false));
+    }
+    Ok(text)
+}
+
+#[derive(Debug, Deserialize)]
+struct OllamaChatResponse {
+    message: OllamaMessage,
+}
+
+#[derive(Debug, Deserialize)]
+struct OllamaMessage {
+    content: String,
+}
+
+/// Ollama（/api/chat, stream=false）応答から本文を取り出す。
+pub fn parse_ollama_chat_content(body: &str) -> Result<String, AppError> {
+    let parsed: OllamaChatResponse = serde_json::from_str(body)
+        .map_err(|_| AppError::new("API_RESPONSE_INVALID", "AI応答を解釈できません", false))?;
+    if parsed.message.content.trim().is_empty() {
+        return Err(AppError::new("API_RESPONSE_INVALID", "AI応答に本文がありません", false));
+    }
+    Ok(parsed.message.content)
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MeetingAiOutput {
@@ -299,6 +386,30 @@ mod tests {
     fn choicesが空のチャット応答はエラー() {
         assert!(parse_chat_completion_content(r#"{"choices":[]}"#).is_err());
         assert!(parse_chat_completion_content("not json").is_err());
+    }
+
+    #[test]
+    fn anthropic応答からテキストを取り出せる() {
+        let body = r#"{"content":[{"type":"text","text":"{\"ok\":true}"}],"role":"assistant"}"#;
+        assert_eq!(parse_anthropic_content(body).unwrap(), r#"{"ok":true}"#);
+        assert!(parse_anthropic_content(r#"{"content":[]}"#).is_err());
+        assert!(parse_anthropic_content("not json").is_err());
+    }
+
+    #[test]
+    fn gemini応答からテキストを取り出せる() {
+        let body = r#"{"candidates":[{"content":{"parts":[{"text":"{\"ok\":1}"}],"role":"model"}}]}"#;
+        assert_eq!(parse_gemini_content(body).unwrap(), r#"{"ok":1}"#);
+        assert!(parse_gemini_content(r#"{"candidates":[]}"#).is_err());
+        assert!(parse_gemini_content("not json").is_err());
+    }
+
+    #[test]
+    fn ollama応答からテキストを取り出せる() {
+        let body = r#"{"message":{"role":"assistant","content":"{\"a\":1}"},"done":true}"#;
+        assert_eq!(parse_ollama_chat_content(body).unwrap(), r#"{"a":1}"#);
+        assert!(parse_ollama_chat_content(r#"{"message":{"role":"assistant","content":"  "}}"#).is_err());
+        assert!(parse_ollama_chat_content("not json").is_err());
     }
 
     #[test]

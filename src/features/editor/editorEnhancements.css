@@ -1,4 +1,4 @@
-.monaco-editor .find-widget > .button.codicon-widget-close {
+.monaco-editor .find-widget .button.codicon-widget-close {
   z-index: 2;
   pointer-events: auto;
 }

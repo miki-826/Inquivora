@@ -6,8 +6,9 @@ use chrono::Utc;
 use serde::Serialize;
 
 use crate::api::client::{
-    auth_headers, classify_status, merge_headers, parse_chat_completion_content,
-    parse_meeting_ai_output, parse_models_response, parse_transcription_response, MeetingAiOutput,
+    auth_headers, classify_status, merge_headers, parse_anthropic_content,
+    parse_chat_completion_content, parse_gemini_content, parse_meeting_ai_output,
+    parse_models_response, parse_ollama_chat_content, parse_transcription_response, MeetingAiOutput,
     TranscriptionResult,
 };
 use crate::error::AppError;
@@ -69,6 +70,11 @@ fn request_headers(profile: &ProviderRuntime) -> HashMap<String, String> {
         if let Some(project_id) = profile.project_id.as_deref().filter(|v| !v.trim().is_empty()) {
             headers.insert("OpenAI-Project".to_string(), project_id.trim().to_string());
         }
+    }
+    if profile.provider_type == "anthropic" {
+        headers
+            .entry("anthropic-version".to_string())
+            .or_insert_with(|| "2023-06-01".to_string());
     }
     merge_headers(&headers, &auth)
 }
@@ -191,9 +197,16 @@ pub async fn test_connection(profile: &ProviderRuntime) -> ProviderConnectionTes
             return result;
         }
     };
-    let url = format!("{}/models", profile.base_url);
+    let probe = match profile.provider_type.as_str() {
+        "anthropic" => client.get(format!("{}/v1/models", profile.base_url)),
+        "ollama" => client.get(format!("{}/api/tags", profile.base_url)),
+        "gemini" => client
+            .get(format!("{}/models", profile.base_url))
+            .query(&[("key", profile.secret.as_deref().unwrap_or(""))]),
+        _ => client.get(format!("{}/models", profile.base_url)),
+    };
     let started = Instant::now();
-    match send_request(profile, client.get(url)).await {
+    match send_request(profile, probe).await {
         Ok((status, _body)) => {
             result.latency_ms = Some(started.elapsed().as_millis() as i64);
             match status {
@@ -285,33 +298,105 @@ pub struct SummaryRequest {
     pub user_content: String,
 }
 
-fn chat_body(request: &SummaryRequest, repair_note: Option<&str>) -> serde_json::Value {
-    let mut user = request.user_content.clone();
-    if let Some(note) = repair_note {
-        user = format!("{user}\n\n# 修復指示\n{note}");
+fn user_content_with_repair(request: &SummaryRequest, repair_note: Option<&str>) -> String {
+    match repair_note {
+        Some(note) => format!("{}\n\n# 修復指示\n{}", request.user_content, note),
+        None => request.user_content.clone(),
     }
+}
+
+fn chat_body(request: &SummaryRequest, repair_note: Option<&str>) -> serde_json::Value {
     serde_json::json!({
         "model": request.model,
         "temperature": 0.2,
         "response_format": { "type": "json_object" },
         "messages": [
             { "role": "system", "content": request.system_prompt },
-            { "role": "user", "content": user },
+            { "role": "user", "content": user_content_with_repair(request, repair_note) },
         ],
     })
 }
 
-async fn post_chat(
+fn anthropic_body(request: &SummaryRequest, repair_note: Option<&str>) -> serde_json::Value {
+    serde_json::json!({
+        "model": request.model,
+        "max_tokens": 4096,
+        "temperature": 0.2,
+        "system": request.system_prompt,
+        "messages": [
+            { "role": "user", "content": user_content_with_repair(request, repair_note) },
+        ],
+    })
+}
+
+fn gemini_body(request: &SummaryRequest, repair_note: Option<&str>) -> serde_json::Value {
+    serde_json::json!({
+        "systemInstruction": { "parts": [{ "text": request.system_prompt }] },
+        "contents": [
+            { "role": "user", "parts": [{ "text": user_content_with_repair(request, repair_note) }] },
+        ],
+        "generationConfig": { "responseMimeType": "application/json", "temperature": 0.2 },
+    })
+}
+
+fn ollama_body(request: &SummaryRequest, repair_note: Option<&str>) -> serde_json::Value {
+    serde_json::json!({
+        "model": request.model,
+        "stream": false,
+        "format": "json",
+        "options": { "temperature": 0.2 },
+        "messages": [
+            { "role": "system", "content": request.system_prompt },
+            { "role": "user", "content": user_content_with_repair(request, repair_note) },
+        ],
+    })
+}
+
+type ContentParser = fn(&str) -> Result<String, AppError>;
+
+/// プロバイダー種別ごとにチャット系エンドポイントへ送り、本文テキストを返す。
+async fn post_summary(
     profile: &ProviderRuntime,
     client: &reqwest::Client,
-    url: &str,
-    body: &serde_json::Value,
+    request: &SummaryRequest,
+    repair_note: Option<&str>,
 ) -> Result<String, AppError> {
-    let (status, response_body) = send_request(profile, client.post(url).json(body)).await?;
+    let (builder, parse): (reqwest::RequestBuilder, ContentParser) =
+        match profile.provider_type.as_str() {
+            "anthropic" => (
+                client
+                    .post(format!("{}/v1/messages", profile.base_url))
+                    .json(&anthropic_body(request, repair_note)),
+                parse_anthropic_content,
+            ),
+            "gemini" => (
+                client
+                    .post(format!(
+                        "{}/models/{}:generateContent",
+                        profile.base_url, request.model
+                    ))
+                    .query(&[("key", profile.secret.as_deref().unwrap_or(""))])
+                    .json(&gemini_body(request, repair_note)),
+                parse_gemini_content,
+            ),
+            "ollama" => (
+                client
+                    .post(format!("{}/api/chat", profile.base_url))
+                    .json(&ollama_body(request, repair_note)),
+                parse_ollama_chat_content,
+            ),
+            _ => (
+                client
+                    .post(format!("{}/chat/completions", profile.base_url))
+                    .json(&chat_body(request, repair_note)),
+                parse_chat_completion_content,
+            ),
+        };
+    let (status, response_body) = send_request(profile, builder).await?;
     if status != 200 {
         return Err(status_error(status, "議事録生成APIが失敗しました"));
     }
-    parse_chat_completion_content(&response_body)
+    parse(&response_body)
 }
 
 /// §10.10 議事録生成。JSONスキーマ不一致の場合は1回だけ修復リクエストを行う。
@@ -320,13 +405,12 @@ async fn generate_summary_once(
     request: SummaryRequest,
 ) -> Result<MeetingAiOutput, AppError> {
     let client = http_client(profile.timeout_ms)?;
-    let url = format!("{}/chat/completions", profile.base_url);
-    let content = post_chat(profile, &client, &url, &chat_body(&request, None)).await?;
+    let content = post_summary(profile, &client, &request, None).await?;
     match parse_meeting_ai_output(&content) {
         Ok(output) => Ok(output),
         Err(_) => {
             let repair = "前回の応答が指定スキーマの有効なJSONではありませんでした。説明やコードフェンスを付けず、スキーマに一致するJSONオブジェクトのみを返してください。";
-            let retried = post_chat(profile, &client, &url, &chat_body(&request, Some(repair))).await?;
+            let retried = post_summary(profile, &client, &request, Some(repair)).await?;
             parse_meeting_ai_output(&retried)
         }
     }
@@ -449,6 +533,11 @@ mod tests {
     }
 
     fn spawn_mock_server(status_line: &'static str, body: &'static str) -> (String, mpsc::Receiver<MockRequest>) {
+        let (root, rx) = spawn_mock_server_root(status_line, body);
+        (format!("{root}/v1"), rx)
+    }
+
+    fn spawn_mock_server_root(status_line: &'static str, body: &'static str) -> (String, mpsc::Receiver<MockRequest>) {
         let listener = TcpListener::bind("127.0.0.1:0").expect("モックサーバーを起動できない");
         let port = listener.local_addr().unwrap().port();
         let (tx, rx) = mpsc::channel();
@@ -491,7 +580,20 @@ mod tests {
                 let _ = stream.write_all(response.as_bytes());
             }
         });
-        (format!("http://127.0.0.1:{port}/v1"), rx)
+        (format!("http://127.0.0.1:{port}"), rx)
+    }
+
+    fn provider_runtime(provider_type: &str, base_url: &str, secret: Option<&str>) -> ProviderRuntime {
+        let mut profile = runtime_profile(base_url, secret);
+        provider_type.clone_into(&mut profile.provider_type);
+        profile.auth_type = match provider_type {
+            "anthropic" => "x-api-key",
+            "ollama" => "none",
+            "gemini" => "query",
+            _ => "bearer",
+        }
+        .to_string();
+        profile
     }
 
     fn runtime_profile(base_url: &str, secret: Option<&str>) -> ProviderRuntime {
@@ -650,5 +752,68 @@ mod tests {
         profile.capabilities.clear();
         let err = list_models(&profile).await.unwrap_err();
         assert_eq!(err.code, "API_CAPABILITY_MISSING");
+    }
+
+    const SUMMARY_JSON: &str =
+        r#"{\"title\":\"定例\",\"summary\":\"要約本文\",\"decisions\":[],\"taskCandidates\":[],\"openQuestions\":[]}"#;
+
+    fn summary_request() -> SummaryRequest {
+        SummaryRequest {
+            model: "test-model".to_string(),
+            system_prompt: "system".to_string(),
+            user_content: "[10:03|12000] 自分: 導入します".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn anthropic議事録はv1_messagesへ送りx_api_keyを付ける() {
+        let body = format!(r#"{{"content":[{{"type":"text","text":"{SUMMARY_JSON}"}}]}}"#);
+        let leaked: &'static str = Box::leak(body.into_boxed_str());
+        let (base, rx) = spawn_mock_server_root("HTTP/1.1 200 OK", leaked);
+        let output = generate_summary(&provider_runtime("anthropic", &base, Some("sk-ant")), summary_request())
+            .await
+            .unwrap();
+        assert_eq!(output.summary, "要約本文");
+        let req = rx.recv().unwrap();
+        assert!(req.head.starts_with("POST /v1/messages"));
+        assert!(req.head.to_lowercase().contains("x-api-key: sk-ant"));
+        assert!(req.head.to_lowercase().contains("anthropic-version: 2023-06-01"));
+        let sent = String::from_utf8_lossy(&req.body);
+        assert!(sent.contains("\"system\":\"system\""));
+        assert!(sent.contains("\"max_tokens\""));
+    }
+
+    #[tokio::test]
+    async fn gemini議事録はgenerate_contentへkey付きで送る() {
+        let body = format!(r#"{{"candidates":[{{"content":{{"parts":[{{"text":"{SUMMARY_JSON}"}}]}}}}]}}"#);
+        let leaked: &'static str = Box::leak(body.into_boxed_str());
+        let (base, rx) = spawn_mock_server_root("HTTP/1.1 200 OK", leaked);
+        let output = generate_summary(&provider_runtime("gemini", &base, Some("g-key")), summary_request())
+            .await
+            .unwrap();
+        assert_eq!(output.summary, "要約本文");
+        let req = rx.recv().unwrap();
+        assert!(req.head.starts_with("POST /models/test-model:generateContent"));
+        assert!(req.head.contains("key=g-key"));
+        let sent = String::from_utf8_lossy(&req.body);
+        assert!(sent.contains("systemInstruction"));
+        assert!(sent.contains("responseMimeType"));
+    }
+
+    #[tokio::test]
+    async fn ollama議事録はapi_chatへ認証なしで送る() {
+        let body = format!(r#"{{"message":{{"role":"assistant","content":"{SUMMARY_JSON}"}},"done":true}}"#);
+        let leaked: &'static str = Box::leak(body.into_boxed_str());
+        let (base, rx) = spawn_mock_server_root("HTTP/1.1 200 OK", leaked);
+        let output = generate_summary(&provider_runtime("ollama", &base, None), summary_request())
+            .await
+            .unwrap();
+        assert_eq!(output.summary, "要約本文");
+        let req = rx.recv().unwrap();
+        assert!(req.head.starts_with("POST /api/chat"));
+        assert!(!req.head.to_lowercase().contains("authorization"));
+        let sent = String::from_utf8_lossy(&req.body);
+        assert!(sent.contains("\"format\":\"json\""));
+        assert!(sent.contains("\"stream\":false"));
     }
 }

@@ -118,6 +118,8 @@ mod tests {
                 auth_type: "bearer".to_string(),
                 organization_id: None,
                 project_id: None,
+                model_id: None,
+                custom_prompt: None,
                 default_headers: Default::default(),
                 timeout_ms: 60000,
                 capabilities: vec!["transcription.batch".to_string()],

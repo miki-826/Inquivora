@@ -141,6 +141,18 @@ pub fn system_prompt() -> String {
         .to_string()
 }
 
+/// 既定のシステムプロンプトへ、ユーザーが設定した独自プロンプトを追加指示として結合する。
+/// JSONスキーマ指示（前段）は常に保持し、出力形式を壊さないようにする。
+pub fn build_system_prompt(custom_prompt: Option<&str>) -> String {
+    let base = system_prompt();
+    match custom_prompt.map(str::trim).filter(|note| !note.is_empty()) {
+        Some(note) => format!(
+            "{base}\n\n# 追加の指示\n以下はまとめ方に関するユーザーの希望です。JSON以外を出力しない・スキーマを変えないという上のルールは必ず守ってください。\n{note}"
+        ),
+        None => base,
+    }
+}
+
 /// 文字起こしとユーザーメモからユーザーメッセージ本文を組み立てる。
 pub fn build_user_content(
     meeting: &Meeting,
@@ -230,6 +242,18 @@ mod tests {
     }
 
     #[test]
+    fn 独自プロンプトは追加指示として結合されスキーマ指示は保持される() {
+        let base = build_system_prompt(None);
+        assert_eq!(base, system_prompt());
+        let combined = build_system_prompt(Some("  敬体でまとめて  "));
+        assert!(combined.contains("taskCandidates"));
+        assert!(combined.contains("# 追加の指示"));
+        assert!(combined.contains("敬体でまとめて"));
+        // 空白のみの独自プロンプトは無視して既定と同じになる。
+        assert_eq!(build_system_prompt(Some("   ")), system_prompt());
+    }
+
+    #[test]
     fn ユーザーメモがあれば本文へ含める() {
         let content = build_user_content(&meeting(), "[10:03|180000] 自分: あ", "重要な補足");
         assert!(content.contains("# 文字起こし"));
@@ -264,6 +288,8 @@ mod tests {
                 auth_type: "bearer".to_string(),
                 organization_id: None,
                 project_id: None,
+                model_id: None,
+                custom_prompt: None,
                 default_headers: Default::default(),
                 timeout_ms: 60000,
                 capabilities: vec!["text.structured_output".to_string()],

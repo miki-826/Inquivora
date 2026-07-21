@@ -1,7 +1,7 @@
 import { DiffEditor, Editor } from "@monaco-editor/react";
 import { listen } from "@tauri-apps/api/event";
 import { Columns2, Eye, EyeOff, Pin, PinOff, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { PanePlaceholder } from "../../components/common/PanePlaceholder";
 import { useEditorStore } from "../../stores/useEditorStore";
 import { useWorkspaceStore } from "../../stores/useWorkspaceStore";
@@ -224,7 +224,15 @@ function ConflictDialog() {
   );
 }
 
-function ActivePane({ tabId, secondary = false }: { tabId: string | null; secondary?: boolean }) {
+function ActivePane({
+  tabId,
+  secondary = false,
+  style,
+}: {
+  tabId: string | null;
+  secondary?: boolean;
+  style?: CSSProperties;
+}) {
   const tabs = useEditorStore((s) => s.tabs);
   const contents = useEditorStore((s) => s.contents);
   const readModes = useEditorStore((s) => s.readModes);
@@ -256,7 +264,7 @@ function ActivePane({ tabId, secondary = false }: { tabId: string | null; second
   const showPreview = Boolean(previewVisible[tab.id]) && tab.language === "markdown";
 
   return (
-    <div className={`editor-pane${secondary ? " editor-pane--secondary" : ""}`}>
+    <div className={`editor-pane${secondary ? " editor-pane--secondary" : ""}`} style={style}>
       <EditorToolbar tab={tab} secondary={secondary} />
       <div className="editor-pane__body">
         <div className="editor-pane__monaco">
@@ -290,7 +298,7 @@ function ActivePane({ tabId, secondary = false }: { tabId: string | null; second
               const domNode = editor.getDomNode();
               const closeFindOnClick = (event: Event) => {
                 const target = event.target as HTMLElement | null;
-                if (!target?.closest(".find-widget > .codicon-widget-close")) return;
+                if (!target?.closest(".find-widget .codicon-widget-close")) return;
                 event.preventDefault();
                 event.stopPropagation();
                 editor.trigger("mouse", "closeFindWidget", null);
@@ -329,10 +337,49 @@ function ActivePane({ tabId, secondary = false }: { tabId: string | null; second
   );
 }
 
+function SplitResizer({ containerRef }: { containerRef: React.RefObject<HTMLDivElement | null> }) {
+  const [active, setActive] = useState(false);
+
+  const applyRatio = (clientX: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0) return;
+    useEditorStore.getState().setSplitRatio((clientX - rect.left) / rect.width);
+  };
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setActive(true);
+  };
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!active) return;
+    applyRatio(event.clientX);
+  };
+
+  const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    setActive(false);
+  };
+
+  return (
+    <div
+      className={`editor-split-resize${active ? " editor-split-resize--active" : ""}`}
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="分割幅を変更"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+    />
+  );
+}
+
 export function EditorArea() {
   const workspaceId = useWorkspaceStore((s) => s.workspace?.id ?? null);
   const activeTabId = useEditorStore((s) => s.activeTabId);
   const secondaryTabId = useEditorStore((s) => s.secondaryTabId);
+  const splitRatio = useEditorStore((s) => s.splitRatio);
+  const contentRef = useRef<HTMLDivElement>(null);
   const splittableCount = useEditorStore(
     (s) => s.tabs.filter((t) => t.viewType === "editor" || t.viewType === "markdown-preview").length,
   );
@@ -383,9 +430,18 @@ export function EditorArea() {
       }}
     >
       <TabBar />
-      <div className={`editor-area__content${secondaryTabId ? " editor-area__content--split" : ""}`}>
-        <ActivePane tabId={activeTabId} />
-        {secondaryTabId && <ActivePane tabId={secondaryTabId} secondary />}
+      <div
+        ref={contentRef}
+        className={`editor-area__content${secondaryTabId ? " editor-area__content--split" : ""}`}
+      >
+        <ActivePane
+          tabId={activeTabId}
+          style={secondaryTabId ? { flex: `0 0 ${splitRatio * 100}%` } : undefined}
+        />
+        {secondaryTabId && <SplitResizer containerRef={contentRef} />}
+        {secondaryTabId && (
+          <ActivePane tabId={secondaryTabId} secondary style={{ flex: "1 1 0%" }} />
+        )}
         {canSplit && (
           <div
             className={`editor-split-dropzone${dropHover ? " editor-split-dropzone--hover" : ""}`}

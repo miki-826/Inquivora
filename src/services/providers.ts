@@ -13,6 +13,8 @@ export type ProviderInput = {
   authType: string;
   organizationId?: string | null;
   projectId?: string | null;
+  modelId?: string | null;
+  customPrompt?: string | null;
   defaultHeaders?: Record<string, string>;
   timeoutMs?: number;
   capabilities: string[];

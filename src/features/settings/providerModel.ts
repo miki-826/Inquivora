@@ -1,7 +1,65 @@
 import { z } from "zod";
 
-export const PROVIDER_TYPES = ["openai", "openai_compatible"] as const;
+export const PROVIDER_TYPES = ["anthropic", "openai", "gemini", "ollama"] as const;
 export type ProviderType = (typeof PROVIDER_TYPES)[number];
+
+export type ProviderPreset = {
+  label: string;
+  baseUrl: string;
+  authType: string;
+  needsApiKey: boolean;
+  editableBaseUrl: boolean;
+  models: string[];
+  defaultModel: string;
+};
+
+/// 対応AIごとの既定設定。UIはこの表だけを見せ、Base URLや認証方式の手入力を不要にする。
+export const PROVIDER_PRESETS: Record<ProviderType, ProviderPreset> = {
+  anthropic: {
+    label: "Claude（Anthropic）",
+    baseUrl: "https://api.anthropic.com",
+    authType: "x-api-key",
+    needsApiKey: true,
+    editableBaseUrl: false,
+    models: ["claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5-20251001"],
+    defaultModel: "claude-sonnet-5",
+  },
+  openai: {
+    label: "ChatGPT（OpenAI）",
+    baseUrl: "https://api.openai.com/v1",
+    authType: "bearer",
+    needsApiKey: true,
+    editableBaseUrl: false,
+    models: ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "o4-mini"],
+    defaultModel: "gpt-4o-mini",
+  },
+  gemini: {
+    label: "Gemini（Google）",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    authType: "query",
+    needsApiKey: true,
+    editableBaseUrl: false,
+    models: ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
+    defaultModel: "gemini-2.0-flash",
+  },
+  ollama: {
+    label: "Ollama（ローカル）",
+    baseUrl: "http://localhost:11434",
+    authType: "none",
+    needsApiKey: false,
+    editableBaseUrl: true,
+    models: ["llama3.1", "qwen2.5", "gemma2", "mistral"],
+    defaultModel: "llama3.1",
+  },
+};
+
+export function providerTypeLabel(type: ProviderType): string {
+  return PROVIDER_PRESETS[type].label;
+}
+
+export function isProviderType(value: string): value is ProviderType {
+  return (PROVIDER_TYPES as readonly string[]).includes(value);
+}
 
 export const FEATURE_KEYS = [
   "transcription.batch",
@@ -31,6 +89,8 @@ export const providerSchema = z.object({
   authType: z.string(),
   organizationId: z.string().nullish(),
   projectId: z.string().nullish(),
+  modelId: z.string().nullish(),
+  customPrompt: z.string().nullish(),
   defaultHeaders: z.record(z.string(), z.string()).default({}),
   timeoutMs: z.number(),
   capabilities: z.array(z.string()).default([]),
