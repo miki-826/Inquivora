@@ -1,10 +1,9 @@
 import { listen } from "@tauri-apps/api/event";
-import { openPath as openExternalPath } from "@tauri-apps/plugin-opener";
 import { Computer, FolderSearch, RefreshCw, Search } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
-import { reindexWorkspace, searchComputerFiles, searchGlobal } from "../../services/search";
+import { reindexWorkspace, revealComputerFile, searchComputerFiles, searchGlobal } from "../../services/search";
 import { useEditorStore } from "../../stores/useEditorStore";
 import { useMeetingStore } from "../../stores/useMeetingStore";
 import { useTaskStore } from "../../stores/useTaskStore";
@@ -120,7 +119,7 @@ export function SearchPage() {
     try {
       if (result.entityType === "file" && result.path) {
         if (scope === "computer") {
-          await openExternalPath(result.path);
+          await revealComputerFile(result.path);
         } else {
           await openPath(result.path);
           navigate("/workspace");

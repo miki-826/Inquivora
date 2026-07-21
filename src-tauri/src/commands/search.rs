@@ -71,6 +71,44 @@ pub async fn search_computer_files(
         })?
 }
 
+/// PC全体検索の結果をエクスプローラーで選択表示する。
+/// ワークスペース外のパスを扱うため、WorkspaceState によるパス制限とは分離する。
+#[tauri::command]
+pub fn search_reveal_computer_file(path: String) -> Result<(), AppError> {
+    #[cfg(target_os = "windows")]
+    {
+        let target = PathBuf::from(path);
+        if !target.is_absolute() || !target.is_file() {
+            return Err(AppError::new(
+                "COMPUTER_FILE_NOT_FOUND",
+                "表示するファイルが見つかりません",
+                false,
+            ));
+        }
+        Command::new("explorer.exe")
+            .arg(format!("/select,{}", target.display()))
+            .spawn()
+            .map_err(|error| {
+                AppError::new(
+                    "COMPUTER_FILE_REVEAL_FAILED",
+                    format!("エクスプローラーを起動できません: {error}"),
+                    true,
+                )
+            })?;
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = path;
+        Err(AppError::new(
+            "COMPUTER_FILE_REVEAL_UNAVAILABLE",
+            "PC全体検索結果の表示はWindowsでのみ利用できます",
+            false,
+        ))
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn search_computer_files_blocking(
     query: &str,

@@ -295,8 +295,20 @@ function ActivePane({
                   if (text) setSelectionTask({ text, filePath: activePathRef.current });
                 },
               });
+              const domNode = editor.getDomNode();
+              // WebView2 は Ctrl+F を先に処理してブラウザ標準の検索バーを開く。
+              // Monaco にフォーカスがある場合だけ捕捉し、メモ帳本来の検索 UI を開く。
+              const handleFindShortcut = (event: KeyboardEvent) => {
+                if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "f") return;
+                if (!domNode?.contains(document.activeElement)) return;
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                void editor.getAction("actions.find")?.run();
+              };
+              window.addEventListener("keydown", handleFindShortcut, true);
               editor.onDidDispose(() => {
                 action.dispose();
+                window.removeEventListener("keydown", handleFindShortcut, true);
               });
             }}
             options={{

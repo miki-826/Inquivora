@@ -16,6 +16,10 @@ export async function searchComputerFiles(query: string, limit = 100): Promise<S
   return parseSearchResults(value);
 }
 
+export async function revealComputerFile(path: string): Promise<void> {
+  await invoke("search_reveal_computer_file", { path });
+}
+
 /// 索引の全再構築を要求する。実処理はバックエンドの別スレッドで行われ、
 /// 進捗は search:index-started / search:index-done イベントで通知される。
 export async function reindexWorkspace(): Promise<void> {

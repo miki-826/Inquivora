@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Inquivora",
-  "version": "0.1.0-alpha.24",
+  "version": "0.1.0-alpha.25",
   "identifier": "com.inquivora.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -53,7 +53,10 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
-        "languages": ["Japanese", "English"]
+        "languages": ["Japanese", "English"],
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "installerHooks": "installer-hooks.nsh"
       },
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
