@@ -295,19 +295,8 @@ function ActivePane({
                   if (text) setSelectionTask({ text, filePath: activePathRef.current });
                 },
               });
-              const domNode = editor.getDomNode();
-              const closeFindOnClick = (event: Event) => {
-                const target = event.target as HTMLElement | null;
-                if (!target?.closest(".find-widget .codicon-widget-close")) return;
-                event.preventDefault();
-                event.stopPropagation();
-                editor.trigger("mouse", "closeFindWidget", null);
-                editor.focus();
-              };
-              domNode?.addEventListener("click", closeFindOnClick, true);
               editor.onDidDispose(() => {
                 action.dispose();
-                domNode?.removeEventListener("click", closeFindOnClick, true);
               });
             }}
             options={{

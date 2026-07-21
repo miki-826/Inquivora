@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 #[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+#[cfg(target_os = "windows")]
 use std::process::Command;
 
 use serde::Deserialize;
@@ -11,6 +13,9 @@ use crate::database::search::{self, SearchResult};
 use crate::error::AppError;
 use crate::search as indexer;
 use crate::DbState;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 fn lock_error(e: impl std::fmt::Display) -> AppError {
     AppError::new("STATE_LOCK_FAILED", format!("状態ロックに失敗: {e}"), true)
@@ -103,10 +108,15 @@ ConvertTo-Json -InputObject @($items) -Compress
 "#;
 
     let output = Command::new("powershell.exe")
+        // Windows Search を使う PowerShell をコンソールなしで起動する。
+        // stdout/stderr はパイプで受け取るため、検索結果やエラー表示は従来どおり維持される。
+        .creation_flags(CREATE_NO_WINDOW)
         .args([
             "-NoLogo",
             "-NoProfile",
             "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
             "-ExecutionPolicy",
             "Bypass",
             "-Command",
