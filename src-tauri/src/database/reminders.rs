@@ -16,6 +16,8 @@ pub struct Reminder {
     pub status: String,
     #[serde(rename = "sentAtUtc")]
     pub sent_at: Option<String>,
+    /// 周期通知の間隔（分）。Noneなら単発。
+    pub repeat_interval_minutes: Option<i64>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -34,6 +36,9 @@ pub struct ReminderInput {
     pub notify_at_utc: String,
     #[serde(default = "default_timezone")]
     pub timezone: String,
+    /// 周期通知の間隔（分）。未指定・0以下なら単発として扱う。
+    #[serde(default)]
+    pub repeat_interval_minutes: Option<i64>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -42,8 +47,7 @@ pub struct ReminderPatch {
     pub notify_at_utc: Option<String>,
 }
 
-const SELECT_COLUMNS: &str =
-    "id, task_id, event_id, notify_at, timezone, status, sent_at, created_at, updated_at";
+const SELECT_COLUMNS: &str = "id, task_id, event_id, notify_at, timezone, status, sent_at, repeat_interval_minutes, created_at, updated_at";
 
 fn row_to_reminder(row: &rusqlite::Row<'_>) -> rusqlite::Result<Reminder> {
     Ok(Reminder {
@@ -54,9 +58,15 @@ fn row_to_reminder(row: &rusqlite::Row<'_>) -> rusqlite::Result<Reminder> {
         timezone: row.get(4)?,
         status: row.get(5)?,
         sent_at: row.get(6)?,
-        created_at: row.get(7)?,
-        updated_at: row.get(8)?,
+        repeat_interval_minutes: row.get(7)?,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
     })
+}
+
+/// 0以下や極端に短い間隔は誤設定として弾き、正の分数だけを周期として受理する。
+fn normalize_repeat(minutes: Option<i64>) -> Option<i64> {
+    minutes.filter(|value| *value > 0)
 }
 
 fn validation_error(message: impl Into<String>) -> AppError {
@@ -100,10 +110,11 @@ fn insert_reminder(conn: &Connection, input: &ReminderInput) -> Result<Option<Re
     let notify_at = normalize_utc(&input.notify_at_utc)?;
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
     let id = uuid::Uuid::new_v4().to_string();
+    let repeat = normalize_repeat(input.repeat_interval_minutes);
     let result = conn.execute(
-        "INSERT INTO reminders (id, task_id, event_id, notify_at, timezone, status, sent_at, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, 'scheduled', NULL, ?6, ?6)",
-        rusqlite::params![id, input.task_id, input.event_id, notify_at, input.timezone, now],
+        "INSERT INTO reminders (id, task_id, event_id, notify_at, timezone, status, sent_at, repeat_interval_minutes, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, 'scheduled', NULL, ?6, ?7, ?7)",
+        rusqlite::params![id, input.task_id, input.event_id, notify_at, input.timezone, repeat, now],
     );
     match result {
         Ok(_) => Ok(Some(get_reminder(conn, &id)?)),
@@ -213,6 +224,41 @@ pub fn mark_sent(conn: &Connection, id: &str, now_utc: &str) -> Result<(), AppEr
     Ok(())
 }
 
+/// 現在時刻より後になるまで通知時刻へ間隔を足し続けた次回時刻を返す。
+fn next_occurrence(notify_at: &str, now_utc: &str, interval_minutes: i64) -> Option<String> {
+    let base = DateTime::parse_from_rfc3339(notify_at).ok()?.with_timezone(&Utc);
+    let now = DateTime::parse_from_rfc3339(now_utc).ok()?.with_timezone(&Utc);
+    let step = chrono::Duration::minutes(interval_minutes.max(1));
+    let mut next = base + step;
+    // スリープなどで長く止まっていても、未来の1回にまとめて追いつく。
+    while next <= now {
+        next += step;
+    }
+    Some(next.to_rfc3339_opts(SecondsFormat::Secs, true))
+}
+
+/// 通知配信後の後処理。周期通知なら次回時刻へ再スケジュールし、単発なら送信済みにする。
+/// 戻り値は次回がまだ残っているか（true=周期継続, false=完了）。
+pub fn advance_or_complete(conn: &Connection, id: &str, now_utc: &str) -> Result<bool, AppError> {
+    let reminder = get_reminder(conn, id)?;
+    match normalize_repeat(reminder.repeat_interval_minutes) {
+        Some(interval) => {
+            let next = next_occurrence(&reminder.notify_at, now_utc, interval)
+                .unwrap_or_else(|| now_utc.to_string());
+            conn.execute(
+                "UPDATE reminders SET notify_at = ?2, status = 'scheduled', sent_at = NULL, updated_at = ?3
+                 WHERE id = ?1",
+                rusqlite::params![id, next, now_utc],
+            )?;
+            Ok(true)
+        }
+        None => {
+            mark_sent(conn, id, now_utc)?;
+            Ok(false)
+        }
+    }
+}
+
 fn set_status_scheduled(
     conn: &Connection,
     task_id: Option<&str>,
@@ -283,7 +329,8 @@ pub fn count_for_target(
 pub fn expire_stale(conn: &Connection, now_utc: &str) -> Result<usize, AppError> {
     let affected = conn.execute(
         "UPDATE reminders SET status = 'expired', updated_at = ?1
-         WHERE status = 'scheduled' AND datetime(notify_at) <= datetime(?1, '-24 hours')",
+         WHERE status = 'scheduled' AND repeat_interval_minutes IS NULL
+           AND datetime(notify_at) <= datetime(?1, '-24 hours')",
         [now_utc],
     )?;
     Ok(affected)
@@ -573,6 +620,77 @@ mod tests {
         assert_eq!(affected, 1);
         assert_eq!(get_reminder(&conn, &stale.id).unwrap().status, "expired");
         assert_eq!(get_reminder(&conn, &recent.id).unwrap().status, "scheduled");
+    }
+
+    #[test]
+    fn 周期通知は配信後に次回時刻へ再スケジュールされる() {
+        let (_dir, conn) = temp_conn();
+        let task_id = make_task(&conn);
+        let reminder = create_reminder(
+            &conn,
+            &input(serde_json::json!({
+                "taskId": task_id,
+                "notifyAtUtc": "2026-07-18T00:00:00Z",
+                "repeatIntervalMinutes": 60
+            })),
+        )
+        .unwrap();
+        assert_eq!(reminder.repeat_interval_minutes, Some(60));
+        // 2回分遅れて配信された場合でも、現在時刻より後の1回にまとめて追いつく。
+        let repeated = advance_or_complete(&conn, &reminder.id, "2026-07-18T01:30:00Z").unwrap();
+        assert!(repeated);
+        let next = get_reminder(&conn, &reminder.id).unwrap();
+        assert_eq!(next.status, "scheduled");
+        assert!(next.sent_at.is_none());
+        assert_eq!(next.notify_at, "2026-07-18T02:00:00Z");
+    }
+
+    #[test]
+    fn 単発通知はadvanceで送信済みになる() {
+        let (_dir, conn) = temp_conn();
+        let task_id = make_task(&conn);
+        let reminder = create_reminder(
+            &conn,
+            &input(serde_json::json!({ "taskId": task_id, "notifyAtUtc": "2026-07-18T00:00:00Z" })),
+        )
+        .unwrap();
+        let repeated = advance_or_complete(&conn, &reminder.id, "2026-07-18T00:00:05Z").unwrap();
+        assert!(!repeated);
+        assert_eq!(get_reminder(&conn, &reminder.id).unwrap().status, "sent");
+    }
+
+    #[test]
+    fn 周期通知は期限切れ整理の対象にならない() {
+        let (_dir, conn) = temp_conn();
+        let task_id = make_task(&conn);
+        let repeating = create_reminder(
+            &conn,
+            &input(serde_json::json!({
+                "taskId": task_id,
+                "notifyAtUtc": "2026-07-15T00:00:00Z",
+                "repeatIntervalMinutes": 1440
+            })),
+        )
+        .unwrap();
+        let affected = expire_stale(&conn, "2026-07-18T00:00:00Z").unwrap();
+        assert_eq!(affected, 0);
+        assert_eq!(get_reminder(&conn, &repeating.id).unwrap().status, "scheduled");
+    }
+
+    #[test]
+    fn 非正の繰り返し間隔は単発として保存される() {
+        let (_dir, conn) = temp_conn();
+        let task_id = make_task(&conn);
+        let reminder = create_reminder(
+            &conn,
+            &input(serde_json::json!({
+                "taskId": task_id,
+                "notifyAtUtc": "2026-07-18T00:00:00Z",
+                "repeatIntervalMinutes": 0
+            })),
+        )
+        .unwrap();
+        assert!(reminder.repeat_interval_minutes.is_none());
     }
 
     #[test]

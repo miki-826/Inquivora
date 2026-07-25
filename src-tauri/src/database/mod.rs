@@ -31,6 +31,7 @@ pub const MIGRATIONS: &[(i64, &str)] = &[
     (1, include_str!("../../migrations/001_init.sql")),
     (2, include_str!("../../migrations/002_task_color.sql")),
     (3, include_str!("../../migrations/003_ai_provider_fields.sql")),
+    (4, include_str!("../../migrations/004_reminder_repeat.sql")),
 ];
 
 pub fn open_database(path: &Path) -> Result<Connection, AppError> {
@@ -108,7 +109,7 @@ mod tests {
     #[test]
     fn マイグレーション適用で最新スキーマバージョンになる() {
         let (_dir, conn) = open_temp_db();
-        assert_eq!(current_schema_version(&conn).unwrap(), 3);
+        assert_eq!(current_schema_version(&conn).unwrap(), 4);
     }
 
     #[test]
@@ -133,7 +134,7 @@ mod tests {
     fn マイグレーションは再適用しても冪等である() {
         let (_dir, mut conn) = open_temp_db();
         run_migrations(&mut conn).expect("再適用に失敗");
-        assert_eq!(current_schema_version(&conn).unwrap(), 3);
+        assert_eq!(current_schema_version(&conn).unwrap(), 4);
     }
 
     #[test]

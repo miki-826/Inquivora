@@ -1,9 +1,9 @@
 import { listen } from "@tauri-apps/api/event";
-import { Computer, FolderSearch, RefreshCw, Search } from "lucide-react";
+import { RefreshCw, Search } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
-import { reindexWorkspace, revealComputerFile, searchComputerFiles, searchGlobal } from "../../services/search";
+import { reindexWorkspace, searchGlobal } from "../../services/search";
 import { useEditorStore } from "../../stores/useEditorStore";
 import { useMeetingStore } from "../../stores/useMeetingStore";
 import { useTaskStore } from "../../stores/useTaskStore";
@@ -23,8 +23,6 @@ function messageOf(error: unknown): string {
   return String(error);
 }
 
-type SearchScope = "workspace" | "computer";
-
 export function SearchPage() {
   const navigate = useNavigate();
   const openPath = useEditorStore((s) => s.openPath);
@@ -33,7 +31,6 @@ export function SearchPage() {
   const focusEvent = useCalendarStore((s) => s.setFocusEventId);
 
   const [query, setQuery] = useState("");
-  const [scope, setScope] = useState<SearchScope>("workspace");
   const [selectedTypes, setSelectedTypes] = useState<EntityType[]>([]);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searched, setSearched] = useState(false);
@@ -78,10 +75,7 @@ export function SearchPage() {
     setBusy(true);
     setError(null);
     try {
-      const found =
-        scope === "workspace"
-          ? await searchGlobal(trimmed, toEntityTypeFilter(selectedTypes), 100, 0)
-          : await searchComputerFiles(trimmed, 100);
+      const found = await searchGlobal(trimmed, toEntityTypeFilter(selectedTypes), 100, 0);
       if (requestId !== requestIdRef.current) return;
       setResults(found);
       setSearched(true);
@@ -91,7 +85,7 @@ export function SearchPage() {
     } finally {
       if (requestId === requestIdRef.current) setBusy(false);
     }
-  }, [query, scope, selectedTypes]);
+  }, [query, selectedTypes]);
 
   const rebuildIndex = async () => {
     setIndexing(true);
@@ -105,9 +99,9 @@ export function SearchPage() {
   };
 
   useEffect(() => {
-    const timer = setTimeout(() => void runSearch(), scope === "computer" ? 600 : 250);
+    const timer = setTimeout(() => void runSearch(), 250);
     return () => clearTimeout(timer);
-  }, [runSearch, scope]);
+  }, [runSearch]);
 
   const toggleType = (type: EntityType) => {
     setSelectedTypes((prev) =>
@@ -118,12 +112,9 @@ export function SearchPage() {
   const openResult = async (result: SearchResult) => {
     try {
       if (result.entityType === "file" && result.path) {
-        if (scope === "computer") {
-          await revealComputerFile(result.path);
-        } else {
-          await openPath(result.path);
-          navigate("/workspace");
-        }
+        // 検索したファイルは自動的にメモ（エディタ）で開く
+        navigate("/workspace");
+        await openPath(result.path);
       } else if (result.entityType === "meeting") {
         await selectMeeting(result.entityId);
         navigate("/meetings");
@@ -142,26 +133,6 @@ export function SearchPage() {
   return (
     <ThreePaneLayout>
       <div className="search-page">
-        <div className="search-page__scope" role="group" aria-label="検索範囲">
-          <button
-            type="button"
-            className={scope === "workspace" ? "search-scope search-scope--on" : "search-scope"}
-            aria-pressed={scope === "workspace"}
-            onClick={() => setScope("workspace")}
-          >
-            <FolderSearch size={16} aria-hidden />
-            ワークスペース内
-          </button>
-          <button
-            type="button"
-            className={scope === "computer" ? "search-scope search-scope--on" : "search-scope"}
-            aria-pressed={scope === "computer"}
-            onClick={() => setScope("computer")}
-          >
-            <Computer size={16} aria-hidden />
-            PC全体
-          </button>
-        </div>
         <div className="search-page__bar">
           <div className="search-page__input">
             <Search size={16} aria-hidden />
@@ -169,53 +140,39 @@ export function SearchPage() {
               ref={inputRef}
               type="text"
               value={query}
-              placeholder={
-                scope === "workspace"
-                  ? "ファイル・議事録・タスク・予定を検索（Ctrl+Shift+F）"
-                  : "PC全体からファイル名を検索"
-              }
-              aria-label={scope === "workspace" ? "ワークスペース内を検索" : "PC全体を検索"}
+              placeholder="ファイル・議事録・タスク・予定を検索（Ctrl+Shift+F）"
+              aria-label="ワークスペース内を検索"
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") void runSearch();
               }}
             />
           </div>
-          {scope === "workspace" && indexing && (
-            <span className="search-page__indexing">インデックス作成中…</span>
-          )}
-          {scope === "workspace" && (
-            <button
-              type="button"
-              className="search-page__reindex"
-              disabled={indexing}
-              title="ワークスペースの検索索引を更新"
-              onClick={() => void rebuildIndex()}
-            >
-              <RefreshCw size={15} aria-hidden />
-              索引を更新
-            </button>
-          )}
+          {indexing && <span className="search-page__indexing">インデックス作成中…</span>}
+          <button
+            type="button"
+            className="search-page__reindex"
+            disabled={indexing}
+            title="ワークスペースの検索索引を更新"
+            onClick={() => void rebuildIndex()}
+          >
+            <RefreshCw size={15} aria-hidden />
+            索引を更新
+          </button>
         </div>
 
-        {scope === "workspace" ? (
-          <div className="search-page__filters">
-            {ENTITY_TYPES.map((type) => (
-              <button
-                key={type}
-                type="button"
-                className={`search-chip${selectedTypes.includes(type) ? " search-chip--on" : ""}`}
-                onClick={() => toggleType(type)}
-              >
-                {entityTypeLabel(type)}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <p className="search-page__hint">
-            Windows検索インデックス内のファイル名を対象にします。結果を選ぶと既定のアプリで開きます。
-          </p>
-        )}
+        <div className="search-page__filters">
+          {ENTITY_TYPES.map((type) => (
+            <button
+              key={type}
+              type="button"
+              className={`search-chip${selectedTypes.includes(type) ? " search-chip--on" : ""}`}
+              onClick={() => toggleType(type)}
+            >
+              {entityTypeLabel(type)}
+            </button>
+          ))}
+        </div>
 
         {error && (
           <p className="search-page__error" role="alert">

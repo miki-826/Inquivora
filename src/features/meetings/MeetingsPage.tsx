@@ -91,10 +91,10 @@ async function chooseAndExportMarkdown(
   kind: "minutes" | "summary",
 ): Promise<string | null> {
   const { save } = await import("@tauri-apps/plugin-dialog");
-  const fileName = markdownFileName(meeting.title, kind === "minutes" ? "議事録" : "要約");
+  const fileName = markdownFileName(meeting.title, kind === "minutes" ? "文字起こし" : "要約");
   const base = meeting.targetFilePath.replace(/[^/\\]+$/, "");
   const selected = await save({
-    title: kind === "minutes" ? "議事録をMarkdownで保存" : "要約をMarkdownで保存",
+    title: kind === "minutes" ? "文字起こしをMarkdownで保存" : "要約をMarkdownで保存",
     defaultPath: `${base}${fileName}`,
     filters: [{ name: "Markdown", extensions: ["md"] }],
   });
@@ -692,7 +692,7 @@ function SelectedMeetingView() {
     setMessage(null);
     try {
       const path = await chooseAndExportMarkdown(meeting, "minutes");
-      if (path) setMessage(`議事録を保存しました: ${path}`);
+      if (path) setMessage(`文字起こしを保存しました: ${path}`);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : String(err));
     } finally {
@@ -719,7 +719,7 @@ function SelectedMeetingView() {
         <div className="meeting-active__header-actions">
           <button type="button" disabled={busy} onClick={() => void saveMinutes()}>
             <Download size={14} aria-hidden />
-            議事録を保存
+            文字起こしを保存
           </button>
           {meeting.id !== activeMeeting?.id && (
             <button

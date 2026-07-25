@@ -846,10 +846,23 @@ input[type="radio"] {
 .search-page {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 12px;
   padding: 16px;
   height: 100%;
   overflow-y: auto;
+  text-align: left;
+}
+
+.search-page__filters,
+.search-results,
+.search-results__status,
+.search-result,
+.search-result__head,
+.search-result__title,
+.search-result__snippet,
+.search-result__path {
+  text-align: left;
 }
 
 .search-page__bar {
@@ -2138,6 +2151,15 @@ input[type="radio"] {
   padding: 1px 5px;
 }
 
+.reminder-section__repeat {
+  font-size: 11px;
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+  border-radius: 3px;
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+
 .reminder-section__delete {
   display: inline-flex;
   align-items: center;
@@ -2146,6 +2168,7 @@ input[type="radio"] {
   color: var(--color-text-muted);
   cursor: pointer;
   padding: 2px;
+  margin-left: auto;
 }
 
 .reminder-section__delete:hover {
@@ -2160,6 +2183,14 @@ input[type="radio"] {
 .reminder-section__add input {
   flex: 1;
   min-width: 0;
+}
+
+.reminder-section__add {
+  flex-wrap: wrap;
+}
+
+.reminder-section__repeat-select {
+  font-size: 12px;
 }
 
 .event-panel__edit {

@@ -39,8 +39,8 @@ export const PROVIDER_PRESETS: Record<ProviderType, ProviderPreset> = {
     authType: "query",
     needsApiKey: true,
     editableBaseUrl: false,
-    models: ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
-    defaultModel: "gemini-2.0-flash",
+    models: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"],
+    defaultModel: "gemini-2.5-flash",
   },
   ollama: {
     label: "Ollama（ローカル）",

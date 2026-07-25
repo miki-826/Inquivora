@@ -107,13 +107,14 @@ fn collect_due(app: &AppHandle) -> Result<(Vec<DueNotification>, bool), AppError
     Ok((due, !config.sound))
 }
 
-fn mark_sent(app: &AppHandle, reminder_id: &str) -> Result<(), AppError> {
+/// 配信後の後処理。周期通知は次回へ再スケジュール、単発は送信済みにする。
+fn complete_delivery(app: &AppHandle, reminder_id: &str) -> Result<(), AppError> {
     let state = app.state::<DbState>();
     let conn = state
         .0
         .lock()
         .map_err(|e| AppError::database(format!("DB接続ロックに失敗: {e}")))?;
-    reminders::mark_sent(&conn, reminder_id, &now_utc())
+    reminders::advance_or_complete(&conn, reminder_id, &now_utc()).map(|_| ())
 }
 
 async fn process_due(app: &AppHandle) {
@@ -127,8 +128,8 @@ async fn process_due(app: &AppHandle) {
     for item in due {
         match sender::send_notification(app, &item.payload, silent).await {
             Ok(()) => {
-                if let Err(err) = mark_sent(app, &item.reminder_id) {
-                    eprintln!("送信済み記録に失敗: {err}");
+                if let Err(err) = complete_delivery(app, &item.reminder_id) {
+                    eprintln!("配信後処理に失敗: {err}");
                 }
             }
             Err(err) => eprintln!("通知送信に失敗（次tickで再試行）: {err}"),

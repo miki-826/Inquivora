@@ -35,6 +35,7 @@ fn create_default(
             event_id: event_id.map(str::to_string),
             notify_at_utc: notify_at,
             timezone: "Asia/Tokyo".to_string(),
+            repeat_interval_minutes: None,
         },
     )?;
     Ok(())

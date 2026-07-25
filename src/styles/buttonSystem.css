@@ -21,7 +21,10 @@ button:hover:not(:disabled) {
   background: var(--color-primary-soft);
   color: var(--color-primary);
   box-shadow: 0 4px 10px rgba(15, 23, 42, 0.1);
-  transform: translateY(-1px);
+
+  /* 何度も表示される原因？ */
+
+  /* transform: translateY(-1px); */
 }
 
 button:active:not(:disabled) {

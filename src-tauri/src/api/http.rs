@@ -17,10 +17,20 @@ const MAX_API_RESPONSE_BYTES: usize = 10 * 1024 * 1024;
 const SUMMARY_CHUNK_CHARS: usize = 48_000;
 const MAX_SUMMARY_CHUNKS: usize = 12;
 
+/// ローカルのOllamaはCPU推論だと議事録生成に数分かかることがある。
+/// 接続確認（/api/tags）は即応するのに要約だけタイムアウトするのを防ぐため、
+/// Ollamaは最低5分のタイムアウトを確保する。
+const OLLAMA_MIN_TIMEOUT_MS: u64 = 300_000;
+
 pub fn runtime_from_profile(
     profile: &crate::database::providers::ApiProviderProfile,
     secret: Option<String>,
 ) -> ProviderRuntime {
+    let timeout_ms = if profile.provider_type == "ollama" {
+        (profile.timeout_ms.max(1000) as u64).max(OLLAMA_MIN_TIMEOUT_MS)
+    } else {
+        profile.timeout_ms.max(1000) as u64
+    };
     ProviderRuntime {
         provider_type: profile.provider_type.clone(),
         base_url: profile.base_url.clone(),
@@ -29,7 +39,7 @@ pub fn runtime_from_profile(
         default_headers: profile.default_headers.clone(),
         organization_id: profile.organization_id.clone(),
         project_id: profile.project_id.clone(),
-        timeout_ms: profile.timeout_ms.max(1000) as u64,
+        timeout_ms,
         capabilities: profile.capabilities.clone(),
     }
 }

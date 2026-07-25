@@ -8,6 +8,7 @@ export type Reminder = {
   timezone: string;
   status: string;
   sentAtUtc: string | null;
+  repeatIntervalMinutes: number | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -16,6 +17,7 @@ export type ReminderInput = {
   taskId?: string;
   eventId?: string;
   notifyAtUtc: string;
+  repeatIntervalMinutes?: number | null;
 };
 
 export function createReminder(input: ReminderInput): Promise<Reminder> {
