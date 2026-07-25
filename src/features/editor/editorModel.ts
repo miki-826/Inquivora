@@ -30,6 +30,7 @@ const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   conf: "ini",
   env: "ini",
   html: "html",
+  htm: "html",
   css: "css",
   scss: "scss",
   js: "javascript",
@@ -49,6 +50,13 @@ const LANGUAGE_BY_EXTENSION: Record<string, string> = {
 export function languageForExtension(extension: string | null): string {
   if (!extension) return "plaintext";
   return LANGUAGE_BY_EXTENSION[extension.toLowerCase()] ?? "plaintext";
+}
+
+const PREVIEWABLE_LANGUAGES = new Set(["markdown", "html"]);
+
+/** エディタ横のプレビュー表示に対応する言語か */
+export function isPreviewableLanguage(language: string): boolean {
+  return PREVIEWABLE_LANGUAGES.has(language);
 }
 
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "jpe"]);

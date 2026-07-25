@@ -274,7 +274,15 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       }
       set((state) => {
         const next = addOrActivateTab(state.tabs, state.activeTabId, tab);
-        return { tabs: next.tabs, activeTabId: next.activeTabId };
+        return {
+          tabs: next.tabs,
+          activeTabId: next.activeTabId,
+          // HTMLは開いた時点で見たままの表示を出す
+          previewVisible:
+            tab.language === "html"
+              ? { ...state.previewVisible, [tab.id]: true }
+              : state.previewVisible,
+        };
       });
       schedulePersistTabs();
     },

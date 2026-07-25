@@ -65,11 +65,12 @@ body {
   user-select: none;
 }
 
+/* ホバーで位置を動かすとカーソルが枠外に出て hover が点滅するため、transform は使わない。 */
 button {
   font-family: inherit;
   cursor: pointer;
   transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease,
-    transform 0.12s ease, filter 0.12s ease;
+    filter 0.12s ease;
 }
 
 :focus-visible {
@@ -170,7 +171,6 @@ input[type="radio"] {
 .ai-panel__generate:hover:not(:disabled),
 .meeting-setup-hint__button:hover {
   box-shadow: 0 6px 16px rgba(37, 99, 235, 0.32);
-  transform: translateY(-1px);
   filter: brightness(1.04);
 }
 
@@ -178,7 +178,6 @@ input[type="radio"] {
 .meeting-dialog__start:active,
 .ws-meeting-panel__start:active,
 .ai-panel__generate:active {
-  transform: translateY(0);
   box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
 }
 
@@ -188,7 +187,6 @@ input[type="radio"] {
   opacity: 0.55;
   box-shadow: none;
   filter: none;
-  transform: none;
   cursor: not-allowed;
 }
 
@@ -1554,6 +1552,31 @@ input[type="radio"] {
   color: var(--color-text-muted);
 }
 
+.html-preview {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--color-border);
+  background: #fff;
+}
+
+.html-preview__frame {
+  flex: 1;
+  width: 100%;
+  border: none;
+}
+
+.html-preview__notice {
+  margin: 0;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-subtle);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .media-view {
   flex: 1;
   display: flex;
@@ -2081,16 +2104,12 @@ input[type="radio"] {
   border-color: var(--color-warning);
 }
 
-.cal-task .fc-event-title::before,
-.cal-task .fc-event-dot-title::before {
-  content: "☑ ";
-}
-
 .cal-task--completed {
   opacity: 0.45;
 }
 
-.cal-task--completed .fc-event-title {
+.cal-task--completed .fc-event-title,
+.cal-task--completed .fc-event-dot-title {
   text-decoration: line-through;
 }
 
@@ -2668,7 +2687,6 @@ input[type="radio"] {
   background: var(--color-surface-subtle);
   color: var(--color-text);
   box-shadow: none;
-  transform: none;
 }
 
 .meeting-list__title {

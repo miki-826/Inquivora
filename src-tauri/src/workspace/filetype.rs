@@ -12,7 +12,7 @@ pub enum FileCategory {
 
 const EDIT_EXTENSIONS: &[&str] = &[
     "md", "txt", "log", "csv", "json", "jsonl", "yaml", "yml", "xml", "ini", "conf", "env",
-    "html", "css", "scss", "js", "jsx", "ts", "tsx", "py", "ps1", "bat", "sh", "sql", "rs",
+    "html", "htm", "css", "scss", "js", "jsx", "ts", "tsx", "py", "ps1", "bat", "sh", "sql", "rs",
     "cs", "java",
 ];
 
@@ -65,7 +65,7 @@ mod tests {
 
     #[test]
     fn 編集対象拡張子を判定する() {
-        for ext in ["md", "txt", "json", "ts", "rs", "sql", "env", "yml"] {
+        for ext in ["md", "txt", "json", "ts", "rs", "sql", "env", "yml", "html", "htm"] {
             assert_eq!(category_for_extension(ext), FileCategory::Edit, "{ext}");
         }
     }

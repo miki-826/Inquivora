@@ -3,6 +3,7 @@ import {
   addOrActivateTab,
   clampSplitRatio,
   closeTab,
+  isPreviewableLanguage,
   languageForExtension,
   reorderTabs,
   SPLIT_RATIO_DEFAULT,
@@ -73,9 +74,28 @@ describe("languageForExtension", () => {
     expect(languageForExtension("cs")).toBe("csharp");
   });
 
+  it("htmlとhtmをhtmlへ対応付ける", () => {
+    expect(languageForExtension("html")).toBe("html");
+    expect(languageForExtension("htm")).toBe("html");
+    expect(languageForExtension("HTML")).toBe("html");
+  });
+
   it("未知の拡張子はplaintext", () => {
     expect(languageForExtension("xyz")).toBe("plaintext");
     expect(languageForExtension(null)).toBe("plaintext");
+  });
+});
+
+describe("isPreviewableLanguage", () => {
+  it("markdownとhtmlはプレビューできる", () => {
+    expect(isPreviewableLanguage("markdown")).toBe(true);
+    expect(isPreviewableLanguage("html")).toBe(true);
+  });
+
+  it("その他の言語はプレビューできない", () => {
+    expect(isPreviewableLanguage("typescript")).toBe(false);
+    expect(isPreviewableLanguage("plaintext")).toBe(false);
+    expect(isPreviewableLanguage("css")).toBe(false);
   });
 });
 

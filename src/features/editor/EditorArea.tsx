@@ -6,6 +6,8 @@ import { PanePlaceholder } from "../../components/common/PanePlaceholder";
 import { useEditorStore } from "../../stores/useEditorStore";
 import { useWorkspaceStore } from "../../stores/useWorkspaceStore";
 import type { EditorTab } from "./editorModel";
+import { isPreviewableLanguage } from "./editorModel";
+import { HtmlPreview } from "./HtmlPreview";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { MediaView } from "./MediaView";
 import "./monacoSetup";
@@ -111,6 +113,7 @@ function EditorToolbar({ tab, secondary = false }: { tab: EditorTab; secondary?:
     (s) => s.tabs.filter((item) => item.viewType === "editor" || item.viewType === "markdown-preview").length > 1,
   );
   const store = useEditorStore;
+  const previewLabel = tab.language === "html" ? "HTMLプレビュー" : "Markdownプレビュー";
 
   return (
     <div className="editor-toolbar">
@@ -148,11 +151,11 @@ function EditorToolbar({ tab, secondary = false }: { tab: EditorTab; secondary?:
             <Columns2 size={14} aria-hidden />
           </button>
         )}
-        {tab.language === "markdown" && (
+        {isPreviewableLanguage(tab.language) && (
           <button
             type="button"
-            title={previewVisible ? "プレビューを閉じる" : "Markdownプレビュー"}
-            aria-label={previewVisible ? "プレビューを閉じる" : "Markdownプレビュー"}
+            title={previewVisible ? "プレビューを閉じる" : previewLabel}
+            aria-label={previewVisible ? "プレビューを閉じる" : previewLabel}
             onClick={() => store.getState().togglePreview(tab.id)}
           >
             {previewVisible ? <EyeOff size={14} aria-hidden /> : <Eye size={14} aria-hidden />}
@@ -261,7 +264,7 @@ function ActivePane({
 
   const content = contents[tab.id] ?? "";
   const readMode = readModes[tab.id] ?? "normal";
-  const showPreview = Boolean(previewVisible[tab.id]) && tab.language === "markdown";
+  const showPreview = Boolean(previewVisible[tab.id]) && isPreviewableLanguage(tab.language);
 
   return (
     <div className={`editor-pane${secondary ? " editor-pane--secondary" : ""}`} style={style}>
@@ -329,7 +332,12 @@ function ActivePane({
             }}
           />
         </div>
-        {showPreview && <MarkdownPreview content={content} />}
+        {showPreview &&
+          (tab.language === "html" ? (
+            <HtmlPreview content={content} path={tab.path} name={tab.name} />
+          ) : (
+            <MarkdownPreview content={content} />
+          ))}
       </div>
       {selectionTask && (
         <SelectionTaskDialog draft={selectionTask} onClose={() => setSelectionTask(null)} />
