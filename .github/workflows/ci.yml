@@ -45,7 +45,7 @@ jobs:
         run: npm test
 
       - name: Frontend dependency audit
-        run: npm audit --omit=dev --audit-level=moderate
+        run: node scripts/audit-check.mjs
 
       - name: Frontend production build
         run: npm run build
