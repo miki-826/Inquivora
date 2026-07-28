@@ -2,12 +2,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { create } from "zustand";
 import {
   addOrActivateTab,
+  assignTabToPane,
   clampSplitRatio,
   closeTab as closeTabModel,
   languageForExtension,
   reorderTabs,
   SPLIT_RATIO_DEFAULT,
   viewTypeForFile,
+  type EditorPane,
   type EditorTab,
 } from "../features/editor/editorModel";
 import type { TreeEntry } from "../features/workspace/treeModel";
@@ -53,6 +55,7 @@ type EditorStore = {
   openPath: (absolutePath: string, options?: Partial<Pick<EditorTab, "isPinned" | "cursorLine" | "cursorColumn">>) => Promise<void>;
   activateTab: (tabId: string) => void;
   openInSplit: (tabId: string) => void;
+  dropTabIntoPane: (tabId: string, pane: EditorPane) => void;
   closeSplit: () => void;
   setSplitRatio: (ratio: number) => void;
   reorderTab: (fromId: string, toId: string) => void;
@@ -308,6 +311,22 @@ export const useEditorStore = create<EditorStore>((set, get) => {
           ? state.secondaryTabId
           : splittableTabs.find((tab) => tab.id !== tabId)?.id ?? null;
         return { activeTabId: otherTabId, secondaryTabId: tabId };
+      });
+    },
+
+    dropTabIntoPane: (tabId, pane) => {
+      set((state) => {
+        const splittable = state.tabs.some(
+          (tab) =>
+            tab.id === tabId &&
+            (tab.viewType === "editor" || tab.viewType === "markdown-preview"),
+        );
+        if (!splittable) return state;
+        return assignTabToPane(
+          { activeTabId: state.activeTabId, secondaryTabId: state.secondaryTabId },
+          tabId,
+          pane,
+        );
       });
     },
 

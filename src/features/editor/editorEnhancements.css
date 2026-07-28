@@ -7,6 +7,13 @@
   pointer-events: none !important;
 }
 
+/* Ctrl+F の検索バーはボタンが密集していて、ホバーのたびに説明が出ると
+   ボタン自体を押せなくなる。title属性はJS側で外し、Monaco独自のホバーも隠す。 */
+.editor-pane__monaco .find-widget .monaco-hover,
+.editor-pane__monaco .find-widget .monaco-hover-content {
+  display: none !important;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;

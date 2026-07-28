@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addOrActivateTab,
+  assignTabToPane,
   clampSplitRatio,
   closeTab,
   isPreviewableLanguage,
@@ -154,5 +155,54 @@ describe("closeTab", () => {
     const result = closeTab([tab("1", "a.md")], "1", "1");
     expect(result.tabs).toHaveLength(0);
     expect(result.activeTabId).toBeNull();
+  });
+});
+
+describe("assignTabToPane", () => {
+  const panes = { activeTabId: "1", secondaryTabId: "2" };
+
+  it("左ペインへドロップすると左に表示する", () => {
+    expect(assignTabToPane(panes, "3", "primary")).toEqual({
+      activeTabId: "3",
+      secondaryTabId: "2",
+    });
+  });
+
+  it("右ペインへドロップすると右に表示する", () => {
+    expect(assignTabToPane(panes, "3", "secondary")).toEqual({
+      activeTabId: "1",
+      secondaryTabId: "3",
+    });
+  });
+
+  it("右のタブを左へドロップすると左右が入れ替わる", () => {
+    expect(assignTabToPane(panes, "2", "primary")).toEqual({
+      activeTabId: "2",
+      secondaryTabId: "1",
+    });
+  });
+
+  it("左のタブを右へドロップすると左右が入れ替わる", () => {
+    expect(assignTabToPane(panes, "1", "secondary")).toEqual({
+      activeTabId: "2",
+      secondaryTabId: "1",
+    });
+  });
+
+  it("同じペインへのドロップは何も変えない", () => {
+    expect(assignTabToPane(panes, "1", "primary")).toEqual(panes);
+    expect(assignTabToPane(panes, "2", "secondary")).toEqual(panes);
+  });
+
+  it("分割していないときに右へドロップすると分割を開始する", () => {
+    expect(assignTabToPane({ activeTabId: "1", secondaryTabId: null }, "2", "secondary")).toEqual({
+      activeTabId: "1",
+      secondaryTabId: "2",
+    });
+  });
+
+  it("分割していないときに左のタブを右へドロップしても分割しない", () => {
+    const single = { activeTabId: "1", secondaryTabId: null };
+    expect(assignTabToPane(single, "1", "secondary")).toEqual(single);
   });
 });

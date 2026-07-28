@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PROVIDER_TYPES = ["anthropic", "openai", "gemini", "ollama"] as const;
+export const PROVIDER_TYPES = ["openai", "gemini"] as const;
 export type ProviderType = (typeof PROVIDER_TYPES)[number];
 
 export type ProviderPreset = {
@@ -15,15 +15,6 @@ export type ProviderPreset = {
 
 /// 対応AIごとの既定設定。UIはこの表だけを見せ、Base URLや認証方式の手入力を不要にする。
 export const PROVIDER_PRESETS: Record<ProviderType, ProviderPreset> = {
-  anthropic: {
-    label: "Claude（Anthropic）",
-    baseUrl: "https://api.anthropic.com",
-    authType: "x-api-key",
-    needsApiKey: true,
-    editableBaseUrl: false,
-    models: ["claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5-20251001"],
-    defaultModel: "claude-sonnet-5",
-  },
   openai: {
     label: "ChatGPT（OpenAI）",
     baseUrl: "https://api.openai.com/v1",
@@ -36,22 +27,15 @@ export const PROVIDER_PRESETS: Record<ProviderType, ProviderPreset> = {
   gemini: {
     label: "Gemini（Google）",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-    authType: "query",
+    authType: "x-goog-api-key",
     needsApiKey: true,
     editableBaseUrl: false,
     models: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"],
     defaultModel: "gemini-2.5-flash",
   },
-  ollama: {
-    label: "Ollama（ローカル）",
-    baseUrl: "http://localhost:11434",
-    authType: "none",
-    needsApiKey: false,
-    editableBaseUrl: true,
-    models: ["llama3.1", "qwen2.5", "gemma2", "mistral"],
-    defaultModel: "llama3.1",
-  },
 };
+
+export const DEFAULT_PROVIDER_TYPE: ProviderType = "openai";
 
 export function providerTypeLabel(type: ProviderType): string {
   return PROVIDER_PRESETS[type].label;
@@ -59,6 +43,19 @@ export function providerTypeLabel(type: ProviderType): string {
 
 export function isProviderType(value: string): value is ProviderType {
   return (PROVIDER_TYPES as readonly string[]).includes(value);
+}
+
+/// 保存済みだが対応をやめた種類の案内文。無い場合はnull。
+const RETIRED_PROVIDER_LABELS: Record<string, string> = {
+  anthropic: "Claude（Anthropic）",
+  ollama: "Ollama（ローカル）",
+  openai_compatible: "OpenAI互換",
+};
+
+export function retiredProviderNotice(providerType: string): string | null {
+  const label = RETIRED_PROVIDER_LABELS[providerType];
+  if (!label) return null;
+  return `${label} は現在サポートしていません。削除して ChatGPT か Gemini を登録してください。`;
 }
 
 export const FEATURE_KEYS = [

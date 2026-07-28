@@ -10,8 +10,26 @@ pub fn auth_headers(auth_type: &str, secret: &str) -> Vec<(String, String)> {
     match auth_type {
         "bearer" => vec![("Authorization".to_string(), format!("Bearer {secret}"))],
         "x-api-key" => vec![("x-api-key".to_string(), secret.to_string())],
+        "x-goog-api-key" => vec![("x-goog-api-key".to_string(), secret.to_string())],
         _ => Vec::new(),
     }
+}
+
+const MAX_API_ERROR_MESSAGE_CHARS: usize = 200;
+
+/// APIのエラー本文（OpenAI・Geminiとも `{"error":{"message":...}}`）から理由を取り出す。
+/// 原因がユーザーに伝わらないと設定を直しようがないため、要約して表に出す。
+pub fn extract_api_error_message(body: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(body).ok()?;
+    let message = value.get("error")?.get("message")?.as_str()?.trim();
+    if message.is_empty() {
+        return None;
+    }
+    if message.chars().count() <= MAX_API_ERROR_MESSAGE_CHARS {
+        return Some(message.to_string());
+    }
+    let truncated: String = message.chars().take(MAX_API_ERROR_MESSAGE_CHARS - 1).collect();
+    Some(format!("{truncated}…"))
 }
 
 /// カスタムヘッダーと認証ヘッダーを結合する。認証系ヘッダーは常に正規の値が優先される。
@@ -114,42 +132,29 @@ pub fn parse_chat_completion_content(body: &str) -> Result<String, AppError> {
 }
 
 #[derive(Debug, Deserialize)]
-struct AnthropicResponse {
-    content: Vec<AnthropicBlock>,
-}
-
-#[derive(Debug, Deserialize)]
-struct AnthropicBlock {
-    #[serde(default, rename = "type")]
-    block_type: String,
-    #[serde(default)]
-    text: String,
-}
-
-/// Anthropic Messages API（/v1/messages）応答からテキストを取り出す。
-pub fn parse_anthropic_content(body: &str) -> Result<String, AppError> {
-    let parsed: AnthropicResponse = serde_json::from_str(body)
-        .map_err(|_| AppError::new("API_RESPONSE_INVALID", "AI応答を解釈できません", false))?;
-    let text: String = parsed
-        .content
-        .into_iter()
-        .filter(|block| block.block_type.is_empty() || block.block_type == "text")
-        .map(|block| block.text)
-        .collect();
-    if text.trim().is_empty() {
-        return Err(AppError::new("API_RESPONSE_INVALID", "AI応答に本文がありません", false));
-    }
-    Ok(text)
-}
-
-#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct GeminiResponse {
+    #[serde(default)]
     candidates: Vec<GeminiCandidate>,
+    #[serde(default)]
+    prompt_feedback: Option<GeminiPromptFeedback>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GeminiPromptFeedback {
+    #[serde(default)]
+    block_reason: Option<String>,
+}
+
+/// 出力上限や安全性フィルターに当たると content ごと欠落した候補が返るため、全て任意にする。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct GeminiCandidate {
-    content: GeminiContent,
+    #[serde(default)]
+    content: Option<GeminiContent>,
+    #[serde(default)]
+    finish_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -168,36 +173,30 @@ struct GeminiPart {
 pub fn parse_gemini_content(body: &str) -> Result<String, AppError> {
     let parsed: GeminiResponse = serde_json::from_str(body)
         .map_err(|_| AppError::new("API_RESPONSE_INVALID", "AI応答を解釈できません", false))?;
-    let text: String = parsed
-        .candidates
-        .into_iter()
-        .next()
-        .map(|candidate| candidate.content.parts.into_iter().map(|part| part.text).collect())
+    if let Some(reason) = parsed.prompt_feedback.and_then(|feedback| feedback.block_reason) {
+        return Err(AppError::new(
+            "API_RESPONSE_INVALID",
+            format!("Geminiが入力を拒否しました（理由: {reason}）"),
+            false,
+        ));
+    }
+    let candidate = parsed.candidates.into_iter().next();
+    let finish_reason = candidate
+        .as_ref()
+        .and_then(|candidate| candidate.finish_reason.clone());
+    let text: String = candidate
+        .and_then(|candidate| candidate.content)
+        .map(|content| content.parts.into_iter().map(|part| part.text).collect())
         .unwrap_or_default();
     if text.trim().is_empty() {
-        return Err(AppError::new("API_RESPONSE_INVALID", "AI応答に本文がありません", false));
+        let message = match finish_reason.as_deref() {
+            Some("MAX_TOKENS") => "Geminiの出力が上限に達し本文が返りませんでした（finishReason: MAX_TOKENS）。文字起こしが長すぎる可能性があります".to_string(),
+            Some(reason) => format!("Geminiが本文を返しませんでした（finishReason: {reason}）"),
+            None => "AI応答に本文がありません".to_string(),
+        };
+        return Err(AppError::new("API_RESPONSE_INVALID", message, false));
     }
     Ok(text)
-}
-
-#[derive(Debug, Deserialize)]
-struct OllamaChatResponse {
-    message: OllamaMessage,
-}
-
-#[derive(Debug, Deserialize)]
-struct OllamaMessage {
-    content: String,
-}
-
-/// Ollama（/api/chat, stream=false）応答から本文を取り出す。
-pub fn parse_ollama_chat_content(body: &str) -> Result<String, AppError> {
-    let parsed: OllamaChatResponse = serde_json::from_str(body)
-        .map_err(|_| AppError::new("API_RESPONSE_INVALID", "AI応答を解釈できません", false))?;
-    if parsed.message.content.trim().is_empty() {
-        return Err(AppError::new("API_RESPONSE_INVALID", "AI応答に本文がありません", false));
-    }
-    Ok(parsed.message.content)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -389,14 +388,6 @@ mod tests {
     }
 
     #[test]
-    fn anthropic応答からテキストを取り出せる() {
-        let body = r#"{"content":[{"type":"text","text":"{\"ok\":true}"}],"role":"assistant"}"#;
-        assert_eq!(parse_anthropic_content(body).unwrap(), r#"{"ok":true}"#);
-        assert!(parse_anthropic_content(r#"{"content":[]}"#).is_err());
-        assert!(parse_anthropic_content("not json").is_err());
-    }
-
-    #[test]
     fn gemini応答からテキストを取り出せる() {
         let body = r#"{"candidates":[{"content":{"parts":[{"text":"{\"ok\":1}"}],"role":"model"}}]}"#;
         assert_eq!(parse_gemini_content(body).unwrap(), r#"{"ok":1}"#);
@@ -405,11 +396,43 @@ mod tests {
     }
 
     #[test]
-    fn ollama応答からテキストを取り出せる() {
-        let body = r#"{"message":{"role":"assistant","content":"{\"a\":1}"},"done":true}"#;
-        assert_eq!(parse_ollama_chat_content(body).unwrap(), r#"{"a":1}"#);
-        assert!(parse_ollama_chat_content(r#"{"message":{"role":"assistant","content":"  "}}"#).is_err());
-        assert!(parse_ollama_chat_content("not json").is_err());
+    fn gemini応答にcontentが無くてもfinish_reasonを説明する() {
+        // 思考トークンで出力上限に達すると content ごと欠落した候補が返る。
+        let body = r#"{"candidates":[{"finishReason":"MAX_TOKENS","index":0}]}"#;
+        let err = parse_gemini_content(body).unwrap_err();
+        assert_eq!(err.code, "API_RESPONSE_INVALID");
+        assert!(err.message.contains("MAX_TOKENS"), "{}", err.message);
+    }
+
+    #[test]
+    fn geminiのプロンプトブロックは理由を伝える() {
+        let body = r#"{"promptFeedback":{"blockReason":"SAFETY"}}"#;
+        let err = parse_gemini_content(body).unwrap_err();
+        assert!(err.message.contains("SAFETY"), "{}", err.message);
+    }
+
+    #[test]
+    fn apiエラー本文からmessageを取り出せる() {
+        let gemini = r#"{"error":{"code":404,"message":"models/gemini-1.5-pro is not found","status":"NOT_FOUND"}}"#;
+        assert_eq!(
+            extract_api_error_message(gemini).as_deref(),
+            Some("models/gemini-1.5-pro is not found"),
+        );
+        let openai = r#"{"error":{"message":"Incorrect API key provided","type":"invalid_request_error"}}"#;
+        assert_eq!(
+            extract_api_error_message(openai).as_deref(),
+            Some("Incorrect API key provided"),
+        );
+        assert_eq!(extract_api_error_message("not json"), None);
+        assert_eq!(extract_api_error_message(r#"{"error":{}}"#), None);
+    }
+
+    #[test]
+    fn apiエラーの抜き出しは長すぎる本文を切り詰める() {
+        let long = "あ".repeat(500);
+        let body = format!(r#"{{"error":{{"message":"{long}"}}}}"#);
+        let message = extract_api_error_message(&body).unwrap();
+        assert!(message.chars().count() <= 200, "{}", message.chars().count());
     }
 
     #[test]

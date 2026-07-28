@@ -8,6 +8,7 @@ import {
   isProviderType,
   parseProviderList,
   providerTypeLabel,
+  retiredProviderNotice,
   validateBaseUrl,
 } from "./providerModel";
 
@@ -88,8 +89,8 @@ describe("capabilitiesForType", () => {
 });
 
 describe("プロバイダープリセット", () => {
-  it("対応4AI（Claude/ChatGPT/Gemini/Ollama）が定義されている", () => {
-    expect([...PROVIDER_TYPES]).toEqual(["anthropic", "openai", "gemini", "ollama"]);
+  it("対応AIはChatGPTとGeminiの2種類", () => {
+    expect([...PROVIDER_TYPES]).toEqual(["openai", "gemini"]);
   });
 
   it("各プリセットに既定URL・既定モデル・候補モデルがある", () => {
@@ -101,18 +102,32 @@ describe("プロバイダープリセット", () => {
     }
   });
 
-  it("OllamaのみAPIキー不要・URL変更可、他はキー必須・URL固定", () => {
-    expect(PROVIDER_PRESETS.ollama.needsApiKey).toBe(false);
-    expect(PROVIDER_PRESETS.ollama.editableBaseUrl).toBe(true);
-    for (const type of ["anthropic", "openai", "gemini"] as const) {
+  it("全プリセットがAPIキー必須・URL固定", () => {
+    for (const type of PROVIDER_TYPES) {
       expect(PROVIDER_PRESETS[type].needsApiKey).toBe(true);
       expect(PROVIDER_PRESETS[type].editableBaseUrl).toBe(false);
     }
   });
 
-  it("isProviderTypeは既知の型のみ受理する", () => {
-    expect(isProviderType("anthropic")).toBe(true);
+  it("Geminiの既定モデルは現行の2.5系", () => {
+    expect(PROVIDER_PRESETS.gemini.defaultModel).toBe("gemini-2.5-flash");
+    expect(PROVIDER_PRESETS.gemini.models.every((model) => model.startsWith("gemini-2.5-"))).toBe(
+      true,
+    );
+  });
+
+  it("isProviderTypeは廃止したClaude/Ollamaを受理しない", () => {
+    expect(isProviderType("openai")).toBe(true);
+    expect(isProviderType("gemini")).toBe(true);
+    expect(isProviderType("anthropic")).toBe(false);
+    expect(isProviderType("ollama")).toBe(false);
     expect(isProviderType("openai_compatible")).toBe(false);
+  });
+
+  it("廃止した種類は日本語の説明付きで案内する", () => {
+    expect(retiredProviderNotice("anthropic")).toContain("Claude");
+    expect(retiredProviderNotice("ollama")).toContain("Ollama");
+    expect(retiredProviderNotice("openai")).toBeNull();
   });
 });
 

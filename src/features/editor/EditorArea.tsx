@@ -5,8 +5,9 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as R
 import { PanePlaceholder } from "../../components/common/PanePlaceholder";
 import { useEditorStore } from "../../stores/useEditorStore";
 import { useWorkspaceStore } from "../../stores/useWorkspaceStore";
-import type { EditorTab } from "./editorModel";
+import type { EditorPane, EditorTab } from "./editorModel";
 import { isPreviewableLanguage } from "./editorModel";
+import { watchFindWidgetTooltips } from "./findWidgetTooltips";
 import { HtmlPreview } from "./HtmlPreview";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { MediaView } from "./MediaView";
@@ -309,8 +310,12 @@ function ActivePane({
                 void editor.getAction("actions.find")?.run();
               };
               window.addEventListener("keydown", handleFindShortcut, true);
+              const stopTooltipWatch = domNode
+                ? watchFindWidgetTooltips(domNode)
+                : () => undefined;
               editor.onDidDispose(() => {
                 action.dispose();
+                stopTooltipWatch();
                 window.removeEventListener("keydown", handleFindShortcut, true);
               });
             }}
@@ -383,6 +388,46 @@ function SplitResizer({ containerRef }: { containerRef: React.RefObject<HTMLDivE
   );
 }
 
+/// タブのドラッグ中にペインへ重ねる受け皿。ドロップでそのペインの表示を差し替える。
+function PaneDropZone({
+  pane,
+  label,
+  onDropped,
+}: {
+  pane: EditorPane;
+  label: string;
+  onDropped: () => void;
+}) {
+  const [hover, setHover] = useState(false);
+
+  return (
+    <div
+      className={`editor-pane-dropzone editor-pane-dropzone--${pane}${
+        hover ? " editor-pane-dropzone--hover" : ""
+      }`}
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes("text/inquivora-tab")) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        if (!hover) setHover(true);
+      }}
+      onDragLeave={() => setHover(false)}
+      onDrop={(e) => {
+        const tabId = e.dataTransfer.getData("text/inquivora-tab");
+        e.preventDefault();
+        setHover(false);
+        onDropped();
+        if (tabId) useEditorStore.getState().dropTabIntoPane(tabId, pane);
+      }}
+    >
+      <span className="editor-pane-dropzone__hint">
+        <Columns2 size={18} aria-hidden />
+        {label}
+      </span>
+    </div>
+  );
+}
+
 export function EditorArea() {
   const workspaceId = useWorkspaceStore((s) => s.workspace?.id ?? null);
   const activeTabId = useEditorStore((s) => s.activeTabId);
@@ -426,6 +471,11 @@ export function EditorArea() {
   }, []);
 
   const canSplit = tabDragging && !secondaryTabId && splittableCount >= 2;
+  const canRearrange = tabDragging && Boolean(secondaryTabId);
+  const endDrag = () => {
+    setTabDragging(false);
+    setDropHover(false);
+  };
 
   return (
     <div
@@ -433,10 +483,7 @@ export function EditorArea() {
       onDragStart={(e) => {
         if (e.dataTransfer.types.includes("text/inquivora-tab")) setTabDragging(true);
       }}
-      onDragEnd={() => {
-        setTabDragging(false);
-        setDropHover(false);
-      }}
+      onDragEnd={endDrag}
     >
       <TabBar />
       <div
@@ -474,6 +521,12 @@ export function EditorArea() {
               ここにドロップで右側に分割表示
             </span>
           </div>
+        )}
+        {canRearrange && (
+          <>
+            <PaneDropZone pane="primary" label="左に表示" onDropped={endDrag} />
+            <PaneDropZone pane="secondary" label="右に表示" onDropped={endDrag} />
+          </>
         )}
       </div>
       <ConflictDialog />

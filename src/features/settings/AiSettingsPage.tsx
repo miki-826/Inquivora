@@ -11,11 +11,13 @@ import {
 } from "./whisperModel";
 import type { ConnectionTestResult, FeatureBinding } from "../../services/providers";
 import {
+  DEFAULT_PROVIDER_TYPE,
   PROVIDER_PRESETS,
   PROVIDER_TYPES,
   capabilitiesForType,
   isProviderType,
   providerTypeLabel,
+  retiredProviderNotice,
   validateBaseUrl,
   type Provider,
   type ProviderType,
@@ -41,10 +43,10 @@ type FormState = {
 };
 
 function emptyForm(): FormState {
-  const preset = PROVIDER_PRESETS.anthropic;
+  const preset = PROVIDER_PRESETS[DEFAULT_PROVIDER_TYPE];
   return {
     id: null,
-    providerType: "anthropic",
+    providerType: DEFAULT_PROVIDER_TYPE,
     baseUrl: preset.baseUrl,
     apiKey: "",
     modelId: preset.defaultModel,
@@ -55,7 +57,7 @@ function emptyForm(): FormState {
 function formFromProvider(provider: Provider): FormState {
   const providerType: ProviderType = isProviderType(provider.providerType)
     ? provider.providerType
-    : "anthropic";
+    : DEFAULT_PROVIDER_TYPE;
   const preset = PROVIDER_PRESETS[providerType];
   return {
     id: provider.id,
@@ -271,6 +273,7 @@ function ProviderCard({
   const typeLabel = isProviderType(provider.providerType)
     ? providerTypeLabel(provider.providerType)
     : provider.providerType;
+  const retiredNotice = retiredProviderNotice(provider.providerType);
 
   return (
     <div className="provider-card">
@@ -279,6 +282,7 @@ function ProviderCard({
         {isSummaryProvider && <span className="provider-card__badge">議事録まとめに使用中</span>}
         {!provider.enabled && <span className="provider-card__disabled">無効</span>}
       </div>
+      {retiredNotice && <div className="provider-card__error">{retiredNotice}</div>}
       {provider.modelId && <div className="provider-card__meta">モデル: {provider.modelId}</div>}
       <div className="provider-card__meta">
         APIキー: {provider.hasSecret ? "設定済み" : "未設定"}
@@ -297,10 +301,12 @@ function ProviderCard({
         </div>
       )}
       <div className="provider-card__actions">
-        <button type="button" onClick={onEdit}>
-          編集
-        </button>
-        {!isSummaryProvider && provider.enabled && (
+        {!retiredNotice && (
+          <button type="button" onClick={onEdit}>
+            編集
+          </button>
+        )}
+        {!retiredNotice && !isSummaryProvider && provider.enabled && (
           <button
             type="button"
             disabled={busy !== null}
@@ -562,7 +568,7 @@ export function AiSettingsPage() {
     await api.setFeatureBinding(SUMMARY_FEATURE_KEY, {
       providerProfileId: provider.id,
       modelId: provider.modelId ?? PROVIDER_PRESETS[
-        isProviderType(provider.providerType) ? provider.providerType : "anthropic"
+        isProviderType(provider.providerType) ? provider.providerType : DEFAULT_PROVIDER_TYPE
       ].defaultModel,
       fallbackProviderProfileId: null,
       fallbackModelId: null,

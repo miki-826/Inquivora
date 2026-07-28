@@ -6,10 +6,9 @@ use chrono::Utc;
 use serde::Serialize;
 
 use crate::api::client::{
-    auth_headers, classify_status, merge_headers, parse_anthropic_content,
+    auth_headers, classify_status, extract_api_error_message, merge_headers,
     parse_chat_completion_content, parse_gemini_content, parse_meeting_ai_output,
-    parse_models_response, parse_ollama_chat_content, parse_transcription_response, MeetingAiOutput,
-    TranscriptionResult,
+    parse_models_response, parse_transcription_response, MeetingAiOutput, TranscriptionResult,
 };
 use crate::error::AppError;
 
@@ -17,20 +16,11 @@ const MAX_API_RESPONSE_BYTES: usize = 10 * 1024 * 1024;
 const SUMMARY_CHUNK_CHARS: usize = 48_000;
 const MAX_SUMMARY_CHUNKS: usize = 12;
 
-/// ローカルのOllamaはCPU推論だと議事録生成に数分かかることがある。
-/// 接続確認（/api/tags）は即応するのに要約だけタイムアウトするのを防ぐため、
-/// Ollamaは最低5分のタイムアウトを確保する。
-const OLLAMA_MIN_TIMEOUT_MS: u64 = 300_000;
-
 pub fn runtime_from_profile(
     profile: &crate::database::providers::ApiProviderProfile,
     secret: Option<String>,
 ) -> ProviderRuntime {
-    let timeout_ms = if profile.provider_type == "ollama" {
-        (profile.timeout_ms.max(1000) as u64).max(OLLAMA_MIN_TIMEOUT_MS)
-    } else {
-        profile.timeout_ms.max(1000) as u64
-    };
+    let timeout_ms = profile.timeout_ms.max(1000) as u64;
     ProviderRuntime {
         provider_type: profile.provider_type.clone(),
         base_url: profile.base_url.clone(),
@@ -81,10 +71,12 @@ fn request_headers(profile: &ProviderRuntime) -> HashMap<String, String> {
             headers.insert("OpenAI-Project".to_string(), project_id.trim().to_string());
         }
     }
-    if profile.provider_type == "anthropic" {
-        headers
-            .entry("anthropic-version".to_string())
-            .or_insert_with(|| "2023-06-01".to_string());
+    // Geminiは以前URLのkeyクエリで認証していた。保存済みのauth_typeが
+    // "query"のままでも動くよう、種類から認証ヘッダーを補う。
+    if profile.provider_type == "gemini" {
+        if let Some(secret) = profile.secret.as_deref().filter(|v| !v.trim().is_empty()) {
+            headers.insert("x-goog-api-key".to_string(), secret.to_string());
+        }
     }
     merge_headers(&headers, &auth)
 }
@@ -162,6 +154,17 @@ fn status_error(status: u16, context: &str) -> AppError {
     AppError::new(code, format!("{context} (HTTP {status})"), retryable)
 }
 
+/// APIが返したエラー本文の理由を添えたAppErrorを作る。
+/// 「HTTP 404」だけでは原因（モデル名の誤り・キー無効など）が分からないため。
+fn status_error_with_body(status: u16, context: &str, body: &str) -> AppError {
+    let (code, retryable) = classify_status(status);
+    let message = match extract_api_error_message(body) {
+        Some(reason) => format!("{context} (HTTP {status}): {reason}"),
+        None => format!("{context} (HTTP {status})"),
+    };
+    AppError::new(code, message, retryable)
+}
+
 pub async fn list_models(profile: &ProviderRuntime) -> Result<Vec<String>, AppError> {
     require_capability(profile, "models.list")?;
     let client = http_client(profile.timeout_ms)?;
@@ -207,17 +210,10 @@ pub async fn test_connection(profile: &ProviderRuntime) -> ProviderConnectionTes
             return result;
         }
     };
-    let probe = match profile.provider_type.as_str() {
-        "anthropic" => client.get(format!("{}/v1/models", profile.base_url)),
-        "ollama" => client.get(format!("{}/api/tags", profile.base_url)),
-        "gemini" => client
-            .get(format!("{}/models", profile.base_url))
-            .query(&[("key", profile.secret.as_deref().unwrap_or(""))]),
-        _ => client.get(format!("{}/models", profile.base_url)),
-    };
+    let probe = client.get(format!("{}/models", profile.base_url));
     let started = Instant::now();
     match send_request(profile, probe).await {
-        Ok((status, _body)) => {
+        Ok((status, body)) => {
             result.latency_ms = Some(started.elapsed().as_millis() as i64);
             match status {
                 200 => {
@@ -242,7 +238,7 @@ pub async fn test_connection(profile: &ProviderRuntime) -> ProviderConnectionTes
                     );
                 }
                 _ => {
-                    let err = status_error(status, "接続テストに失敗しました");
+                    let err = status_error_with_body(status, "接続テストに失敗しました", &body);
                     result.error_code = Some(err.code);
                     result.user_message = Some(err.message);
                 }
@@ -327,38 +323,26 @@ fn chat_body(request: &SummaryRequest, repair_note: Option<&str>) -> serde_json:
     })
 }
 
-fn anthropic_body(request: &SummaryRequest, repair_note: Option<&str>) -> serde_json::Value {
-    serde_json::json!({
-        "model": request.model,
-        "max_tokens": 4096,
-        "temperature": 0.2,
-        "system": request.system_prompt,
-        "messages": [
-            { "role": "user", "content": user_content_with_repair(request, repair_note) },
-        ],
-    })
-}
+const GEMINI_MAX_OUTPUT_TOKENS: u32 = 8192;
 
 fn gemini_body(request: &SummaryRequest, repair_note: Option<&str>) -> serde_json::Value {
+    let mut generation_config = serde_json::json!({
+        "responseMimeType": "application/json",
+        "temperature": 0.2,
+        "maxOutputTokens": GEMINI_MAX_OUTPUT_TOKENS,
+    });
+    // Gemini 2.5系は既定で思考トークンを出力上限から消費し、本文が空のまま
+    // finishReason=MAX_TOKENSで返ることがある。無効化できるflash系だけ切る
+    // （proは思考を止められず、thinkingBudget:0を送ると400になる）。
+    if request.model.contains("flash") {
+        generation_config["thinkingConfig"] = serde_json::json!({ "thinkingBudget": 0 });
+    }
     serde_json::json!({
         "systemInstruction": { "parts": [{ "text": request.system_prompt }] },
         "contents": [
             { "role": "user", "parts": [{ "text": user_content_with_repair(request, repair_note) }] },
         ],
-        "generationConfig": { "responseMimeType": "application/json", "temperature": 0.2 },
-    })
-}
-
-fn ollama_body(request: &SummaryRequest, repair_note: Option<&str>) -> serde_json::Value {
-    serde_json::json!({
-        "model": request.model,
-        "stream": false,
-        "format": "json",
-        "options": { "temperature": 0.2 },
-        "messages": [
-            { "role": "system", "content": request.system_prompt },
-            { "role": "user", "content": user_content_with_repair(request, repair_note) },
-        ],
+        "generationConfig": generation_config,
     })
 }
 
@@ -373,27 +357,14 @@ async fn post_summary(
 ) -> Result<String, AppError> {
     let (builder, parse): (reqwest::RequestBuilder, ContentParser) =
         match profile.provider_type.as_str() {
-            "anthropic" => (
-                client
-                    .post(format!("{}/v1/messages", profile.base_url))
-                    .json(&anthropic_body(request, repair_note)),
-                parse_anthropic_content,
-            ),
             "gemini" => (
                 client
                     .post(format!(
                         "{}/models/{}:generateContent",
                         profile.base_url, request.model
                     ))
-                    .query(&[("key", profile.secret.as_deref().unwrap_or(""))])
                     .json(&gemini_body(request, repair_note)),
                 parse_gemini_content,
-            ),
-            "ollama" => (
-                client
-                    .post(format!("{}/api/chat", profile.base_url))
-                    .json(&ollama_body(request, repair_note)),
-                parse_ollama_chat_content,
             ),
             _ => (
                 client
@@ -404,7 +375,11 @@ async fn post_summary(
         };
     let (status, response_body) = send_request(profile, builder).await?;
     if status != 200 {
-        return Err(status_error(status, "議事録生成APIが失敗しました"));
+        return Err(status_error_with_body(
+            status,
+            "議事録生成APIが失敗しました",
+            &response_body,
+        ));
     }
     parse(&response_body)
 }
@@ -596,9 +571,8 @@ mod tests {
     fn provider_runtime(provider_type: &str, base_url: &str, secret: Option<&str>) -> ProviderRuntime {
         let mut profile = runtime_profile(base_url, secret);
         provider_type.clone_into(&mut profile.provider_type);
+        // Geminiは旧データの auth_type="query" のまま。provider_type から認証を補うことを確かめる。
         profile.auth_type = match provider_type {
-            "anthropic" => "x-api-key",
-            "ollama" => "none",
             "gemini" => "query",
             _ => "bearer",
         }
@@ -776,24 +750,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn anthropic議事録はv1_messagesへ送りx_api_keyを付ける() {
-        let body = format!(r#"{{"content":[{{"type":"text","text":"{SUMMARY_JSON}"}}]}}"#);
-        let leaked: &'static str = Box::leak(body.into_boxed_str());
-        let (base, rx) = spawn_mock_server_root("HTTP/1.1 200 OK", leaked);
-        let output = generate_summary(&provider_runtime("anthropic", &base, Some("sk-ant")), summary_request())
-            .await
-            .unwrap();
-        assert_eq!(output.summary, "要約本文");
-        let req = rx.recv().unwrap();
-        assert!(req.head.starts_with("POST /v1/messages"));
-        assert!(req.head.to_lowercase().contains("x-api-key: sk-ant"));
-        assert!(req.head.to_lowercase().contains("anthropic-version: 2023-06-01"));
-        let sent = String::from_utf8_lossy(&req.body);
-        assert!(sent.contains("\"system\":\"system\""));
-        assert!(sent.contains("\"max_tokens\""));
-    }
-
-    #[tokio::test]
     async fn gemini議事録はgenerate_contentへkey付きで送る() {
         let body = format!(r#"{{"candidates":[{{"content":{{"parts":[{{"text":"{SUMMARY_JSON}"}}]}}}}]}}"#);
         let leaked: &'static str = Box::leak(body.into_boxed_str());
@@ -804,26 +760,72 @@ mod tests {
         assert_eq!(output.summary, "要約本文");
         let req = rx.recv().unwrap();
         assert!(req.head.starts_with("POST /models/test-model:generateContent"));
-        assert!(req.head.contains("key=g-key"));
+        // 認証は x-goog-api-key ヘッダーで送る（URLのkeyクエリはログに残りやすい）
+        assert!(!req.head.contains("key=g-key"));
+        assert!(req.head.to_lowercase().contains("x-goog-api-key: g-key"));
         let sent = String::from_utf8_lossy(&req.body);
         assert!(sent.contains("systemInstruction"));
         assert!(sent.contains("responseMimeType"));
     }
 
     #[tokio::test]
-    async fn ollama議事録はapi_chatへ認証なしで送る() {
-        let body = format!(r#"{{"message":{{"role":"assistant","content":"{SUMMARY_JSON}"}},"done":true}}"#);
+    async fn gemini本文は出力上限と思考無効化を指定する() {
+        let body = format!(r#"{{"candidates":[{{"content":{{"parts":[{{"text":"{SUMMARY_JSON}"}}]}}}}]}}"#);
         let leaked: &'static str = Box::leak(body.into_boxed_str());
         let (base, rx) = spawn_mock_server_root("HTTP/1.1 200 OK", leaked);
-        let output = generate_summary(&provider_runtime("ollama", &base, None), summary_request())
+        let mut profile = provider_runtime("gemini", &base, Some("g-key"));
+        profile.provider_type = "gemini".to_string();
+        let request = SummaryRequest {
+            model: "gemini-2.5-flash".to_string(),
+            ..summary_request()
+        };
+        generate_summary(&profile, request).await.unwrap();
+        let sent = String::from_utf8_lossy(&rx.recv().unwrap().body).to_string();
+        assert!(sent.contains("\"maxOutputTokens\""), "{sent}");
+        assert!(sent.contains("\"thinkingBudget\":0"), "{sent}");
+    }
+
+    #[tokio::test]
+    async fn geminiのproモデルは思考予算を指定しない() {
+        let body = format!(r#"{{"candidates":[{{"content":{{"parts":[{{"text":"{SUMMARY_JSON}"}}]}}}}]}}"#);
+        let leaked: &'static str = Box::leak(body.into_boxed_str());
+        let (base, rx) = spawn_mock_server_root("HTTP/1.1 200 OK", leaked);
+        let request = SummaryRequest {
+            model: "gemini-2.5-pro".to_string(),
+            ..summary_request()
+        };
+        generate_summary(&provider_runtime("gemini", &base, Some("g-key")), request)
             .await
             .unwrap();
-        assert_eq!(output.summary, "要約本文");
-        let req = rx.recv().unwrap();
-        assert!(req.head.starts_with("POST /api/chat"));
-        assert!(!req.head.to_lowercase().contains("authorization"));
-        let sent = String::from_utf8_lossy(&req.body);
-        assert!(sent.contains("\"format\":\"json\""));
-        assert!(sent.contains("\"stream\":false"));
+        let sent = String::from_utf8_lossy(&rx.recv().unwrap().body).to_string();
+        assert!(!sent.contains("thinkingBudget"), "{sent}");
+    }
+
+    #[tokio::test]
+    async fn 議事録apiの失敗はサーバーの理由をそのまま伝える() {
+        let (base, _rx) = spawn_mock_server_root(
+            "HTTP/1.1 404 Not Found",
+            r#"{"error":{"code":404,"message":"models/gemini-1.5-pro is not found","status":"NOT_FOUND"}}"#,
+        );
+        let err = generate_summary(&provider_runtime("gemini", &base, Some("g-key")), summary_request())
+            .await
+            .unwrap_err();
+        assert!(err.message.contains("gemini-1.5-pro"), "{}", err.message);
+        assert!(err.message.contains("404"), "{}", err.message);
+    }
+
+    #[tokio::test]
+    async fn 接続テストの失敗もサーバーの理由を伝える() {
+        let (base, _rx) = spawn_mock_server_root(
+            "HTTP/1.1 400 Bad Request",
+            r#"{"error":{"message":"API key not valid. Please pass a valid API key."}}"#,
+        );
+        let result = test_connection(&provider_runtime("gemini", &base, Some("bad"))).await;
+        assert!(!result.success);
+        assert!(
+            result.user_message.as_deref().unwrap_or("").contains("API key not valid"),
+            "{:?}",
+            result.user_message,
+        );
     }
 }

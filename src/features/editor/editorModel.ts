@@ -101,6 +101,37 @@ export function reorderTabs(tabs: EditorTab[], fromId: string, toId: string): Ed
   return next;
 }
 
+export type EditorPane = "primary" | "secondary";
+
+export type PaneAssignment = {
+  activeTabId: string | null;
+  secondaryTabId: string | null;
+};
+
+/// タブをドロップ先のペインへ割り当てる。既に反対側で開いていれば左右を入れ替える
+/// （VS Codeと同じく、分割中はどちらのペインへもドラッグで移せるようにするため）。
+export function assignTabToPane(
+  panes: PaneAssignment,
+  tabId: string,
+  pane: EditorPane,
+): PaneAssignment {
+  const { activeTabId, secondaryTabId } = panes;
+  if (pane === "primary") {
+    if (activeTabId === tabId) return panes;
+    return {
+      activeTabId: tabId,
+      secondaryTabId: secondaryTabId === tabId ? activeTabId : secondaryTabId,
+    };
+  }
+  if (secondaryTabId === tabId) return panes;
+  // 分割していない状態で左のタブを右へ落としても、左が空になるだけなので何もしない。
+  if (secondaryTabId === null && activeTabId === tabId) return panes;
+  return {
+    activeTabId: activeTabId === tabId ? secondaryTabId : activeTabId,
+    secondaryTabId: tabId,
+  };
+}
+
 export const SPLIT_RATIO_MIN = 0.2;
 export const SPLIT_RATIO_MAX = 0.8;
 export const SPLIT_RATIO_DEFAULT = 0.5;

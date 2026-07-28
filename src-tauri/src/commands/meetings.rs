@@ -487,9 +487,7 @@ pub async fn meeting_generate_summary(
     let mut last_error = None;
     for (profile, model) in provider_candidates {
         let secret = credentials::get_secret(&app, &profile.id).await?;
-        // ローカルのOllama等（認証なし）はAPIキー不要。それ以外はキー必須。
-        let needs_secret = profile.auth_type != "none";
-        let result = if needs_secret && secret.is_none() {
+        let result = if secret.is_none() {
             Err(AppError::new(
                 "API_AUTH_FAILED",
                 "APIキーが設定されていません。設定画面で登録してください",
