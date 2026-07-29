@@ -718,6 +718,40 @@ input[type="radio"] {
   line-height: 1.5;
 }
 
+.ai-panel__model-info {
+  display: grid;
+  gap: 6px;
+  margin: -4px 0 2px;
+}
+
+.ai-panel__model-row {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 2px 8px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-subtle);
+  font-size: 12px;
+}
+
+.ai-panel__model-row > span,
+.ai-panel__model-row small {
+  color: var(--color-text-muted);
+}
+
+.ai-panel__model-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.ai-panel__model-row small {
+  grid-column: 2;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .ai-panel__section h3 {
   font-size: 13px;
   font-weight: 600;

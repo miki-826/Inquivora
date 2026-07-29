@@ -35,6 +35,10 @@ type RecentTabRecord = {
   cursorColumn: number;
 };
 
+type OpenPathOptions = Partial<Pick<EditorTab, "isPinned" | "cursorLine" | "cursorColumn">> & {
+  activate?: boolean;
+};
+
 export type ConflictState = {
   tabId: string;
   showDiff: boolean;
@@ -52,7 +56,7 @@ type EditorStore = {
   previewVisible: Record<string, boolean>;
   conflict: ConflictState | null;
   openFile: (entry: TreeEntry) => Promise<void>;
-  openPath: (absolutePath: string, options?: Partial<Pick<EditorTab, "isPinned" | "cursorLine" | "cursorColumn">>) => Promise<void>;
+  openPath: (absolutePath: string, options?: OpenPathOptions) => Promise<void>;
   activateTab: (tabId: string) => void;
   openInSplit: (tabId: string) => void;
   dropTabIntoPane: (tabId: string, pane: EditorPane) => void;
@@ -224,9 +228,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
     openPath: async (absolutePath, options = {}) => {
       const existing = get().tabs.find((t) => t.path === absolutePath);
-      if (existing) {
-        set({ activeTabId: existing.id });
-        return;
+        if (existing) {
+          if (options.activate !== false) {
+            set({ activeTabId: existing.id });
+          }
+          return;
       }
       const extension = extensionOf(absolutePath);
       const detected = await ws.detectType(absolutePath).catch(() => null);
@@ -279,7 +285,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         const next = addOrActivateTab(state.tabs, state.activeTabId, tab);
         return {
           tabs: next.tabs,
-          activeTabId: next.activeTabId,
+          activeTabId: options.activate === false ? state.activeTabId : next.activeTabId,
           // HTMLは開いた時点で見たままの表示を出す
           previewVisible:
             tab.language === "html"
@@ -572,7 +578,13 @@ export const useEditorStore = create<EditorStore>((set, get) => {
             isPinned: record.isPinned,
             cursorLine: record.cursorLine,
             cursorColumn: record.cursorColumn,
+            activate: false,
           });
+        }
+        if (!get().activeTabId) {
+          const lastPath = stored.length > 0 ? stored[stored.length - 1].path : undefined;
+          const lastTab = lastPath ? get().tabs.find((tab) => tab.path === lastPath) : undefined;
+          if (lastTab) set({ activeTabId: lastTab.id });
         }
       } catch (error) {
         console.error("タブの復元に失敗", error);

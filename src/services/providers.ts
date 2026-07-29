@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getWhisperModelStatus } from "./whisper";
 import {
   parseProviderList,
   providerSchema,
@@ -160,10 +161,15 @@ export async function getAiDisclosure(featureKey: FeatureKey): Promise<AiDisclos
       };
     }
   }
+  const selectedWhisper = featureKey === "transcription.batch"
+    ? await getWhisperModelStatus()
+      .then((models) => models.find((model) => model.selected) ?? null)
+      .catch(() => null)
+    : null;
   return {
     mode: "local",
-    providerName: null,
-    modelId: null,
+    providerName: featureKey === "transcription.batch" ? "内蔵 Whisper" : null,
+    modelId: selectedWhisper?.displayName ?? null,
     sendTarget: "録音した音声チャンク（PC内だけで処理）",
   };
 }

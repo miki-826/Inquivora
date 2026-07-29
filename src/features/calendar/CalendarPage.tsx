@@ -197,7 +197,7 @@ export function CalendarPage() {
       leftLabel="タスク設定"
       rightLabel="予定詳細"
     >
-      <div className="calendar-page">
+      <div className={`calendar-page calendar-page--task-font-${taskListFontSize}`}>
         {error && (
           <p className="calendar-page__error" role="alert">
             {error}

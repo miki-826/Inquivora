@@ -749,14 +749,28 @@ function AiMeetingPanel() {
   const generateSummary = useMeetingStore((s) => s.generateSummary);
   const acceptCandidate = useMeetingStore((s) => s.acceptCandidate);
   const [disclosure, setDisclosure] = useState<AiDisclosure | null>(null);
+  const [transcriptionDisclosure, setTranscriptionDisclosure] = useState<AiDisclosure | null>(null);
   const meetings = useMeetingStore((s) => s.meetings);
   const selectedMeeting = meetings.find((meeting) => meeting.id === selectedMeetingId);
   const [summaryMessage, setSummaryMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!summaryAvailable) return;
-    void getAiDisclosure("meeting.summary").then(setDisclosure).catch(() => undefined);
-  }, [summaryAvailable]);
+    let cancelled = false;
+    void Promise.all([
+      getAiDisclosure("meeting.summary"),
+      getAiDisclosure("transcription.batch"),
+    ])
+      .then(([summary, transcription]) => {
+        if (!cancelled) {
+          setDisclosure(summary);
+          setTranscriptionDisclosure(transcription);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMeetingId, summaryAvailable]);
 
   if (!selectedMeetingId) {
     return (
@@ -785,6 +799,26 @@ function AiMeetingPanel() {
           {generating ? "生成中…" : ai.summary ? "再生成" : "議事録を生成"}
         </button>
       </div>
+      <section className="ai-panel__model-info" aria-label="AI処理に使用するモデル">
+        <div className="ai-panel__model-row">
+          <span>文字起こし</span>
+          <strong>
+            {transcriptionDisclosure
+              ? `${transcriptionDisclosure.providerName ?? "API"} / ${transcriptionDisclosure.modelId ?? "モデル未設定"}`
+              : "確認中…"}
+          </strong>
+          <small>{transcriptionDisclosure?.sendTarget}</small>
+        </div>
+        <div className="ai-panel__model-row">
+          <span>議事録要約</span>
+          <strong>
+            {disclosure?.mode === "api"
+              ? `${disclosure.providerName} / ${disclosure.modelId}`
+              : "APIモデルが未設定"}
+          </strong>
+          <small>{disclosure?.mode === "api" ? disclosure.sendTarget : "AI設定で要約用のProviderとモデルを選択します"}</small>
+        </div>
+      </section>
       {!summaryAvailable && (
         <p className="ai-panel__note">
           議事録の生成にはAPIプロバイダーの設定が必要です。設定画面のAI設定で「議事録・タスク抽出」にProviderとモデルを割り当ててください（内蔵Whisperのみでは生成できません）。

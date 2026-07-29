@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
 import { reindexWorkspace, searchGlobal } from "../../services/search";
-import { useEditorStore } from "../../stores/useEditorStore";
 import { useMeetingStore } from "../../stores/useMeetingStore";
 import { useTaskStore } from "../../stores/useTaskStore";
 import { useCalendarStore } from "../../stores/useCalendarStore";
@@ -26,7 +25,6 @@ function messageOf(error: unknown): string {
 
 export function SearchPage() {
   const navigate = useNavigate();
-  const openPath = useEditorStore((s) => s.openPath);
   const revealPath = useWorkspaceStore((s) => s.revealPath);
   const selectMeeting = useMeetingStore((s) => s.selectMeeting);
   const selectTask = useTaskStore((s) => s.select);
@@ -116,8 +114,7 @@ export function SearchPage() {
       if (result.entityType === "file" && result.path) {
         // 検索したファイルは自動的にメモ（エディタ）で開く
         await revealPath(result.path);
-        navigate("/workspace");
-        await openPath(result.path);
+        navigate("/workspace", { state: { openPath: result.path } });
       } else if (result.entityType === "meeting") {
         await selectMeeting(result.entityId);
         navigate("/meetings");
