@@ -6,6 +6,7 @@ import {
   SIDEBAR_WIDTH_MAX,
   SIDEBAR_WIDTH_MIN,
   type NavigationPosition,
+  type TaskListFontSize,
 } from "../schemas/layoutSettings";
 import { loadSetting, saveSetting } from "../services/settings";
 
@@ -19,12 +20,14 @@ type SettingsState = {
   rightSidebarWidth: number;
   lastScreen: string;
   navigationPosition: NavigationPosition;
+  taskListFontSize: TaskListFontSize;
   hydrated: boolean;
   hydrate: () => Promise<void>;
   setLeftSidebarWidth: (width: number) => void;
   setRightSidebarWidth: (width: number) => void;
   setLastScreen: (path: string) => void;
   setNavigationPosition: (position: NavigationPosition) => void;
+  setTaskListFontSize: (size: TaskListFontSize) => void;
 };
 
 let persistTimer: ReturnType<typeof setTimeout> | undefined;
@@ -32,12 +35,13 @@ let persistTimer: ReturnType<typeof setTimeout> | undefined;
 function schedulePersist(get: () => SettingsState) {
   clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
-    const { leftSidebarWidth, rightSidebarWidth, lastScreen, navigationPosition } = get();
+    const { leftSidebarWidth, rightSidebarWidth, lastScreen, navigationPosition, taskListFontSize } = get();
     saveSetting(LAYOUT_SETTING_KEY, {
       leftSidebarWidth,
       rightSidebarWidth,
       lastScreen,
       navigationPosition,
+      taskListFontSize,
     }).catch((error) => console.error("レイアウト設定の保存に失敗しました", error));
   }, PERSIST_DEBOUNCE_MS);
 }
@@ -68,6 +72,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
   setNavigationPosition: (navigationPosition) => {
     set({ navigationPosition });
+    schedulePersist(get);
+  },
+  setTaskListFontSize: (taskListFontSize) => {
+    set({ taskListFontSize });
     schedulePersist(get);
   },
 }));

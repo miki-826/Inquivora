@@ -17,12 +17,14 @@ export const SCREEN_PATHS = [
 ] as const;
 
 export type NavigationPosition = "side" | "top";
+export type TaskListFontSize = "small" | "medium" | "large";
 
 export type LayoutSettings = {
   leftSidebarWidth: number;
   rightSidebarWidth: number;
   lastScreen: string;
   navigationPosition: NavigationPosition;
+  taskListFontSize: TaskListFontSize;
 };
 
 export const DEFAULT_LAYOUT_SETTINGS: LayoutSettings = {
@@ -30,6 +32,7 @@ export const DEFAULT_LAYOUT_SETTINGS: LayoutSettings = {
   rightSidebarWidth: 360,
   lastScreen: "/workspace",
   navigationPosition: "side",
+  taskListFontSize: "small",
 };
 
 const layoutSettingsSchema = z.object({
@@ -37,6 +40,7 @@ const layoutSettingsSchema = z.object({
   rightSidebarWidth: z.number().optional(),
   lastScreen: z.string().optional(),
   navigationPosition: z.enum(["side", "top"]).optional(),
+  taskListFontSize: z.enum(["small", "medium", "large"]).optional(),
 });
 
 export function parseLayoutSettings(value: unknown): LayoutSettings {
@@ -56,5 +60,6 @@ export function parseLayoutSettings(value: unknown): LayoutSettings {
     lastScreen: isKnownScreen ? lastScreen : DEFAULT_LAYOUT_SETTINGS.lastScreen,
     navigationPosition:
       result.data.navigationPosition ?? DEFAULT_LAYOUT_SETTINGS.navigationPosition,
+    taskListFontSize: result.data.taskListFontSize ?? DEFAULT_LAYOUT_SETTINGS.taskListFontSize,
   };
 }

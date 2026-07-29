@@ -8,6 +8,7 @@ import { useEditorStore } from "../../stores/useEditorStore";
 import { useMeetingStore } from "../../stores/useMeetingStore";
 import { useTaskStore } from "../../stores/useTaskStore";
 import { useCalendarStore } from "../../stores/useCalendarStore";
+import { useWorkspaceStore } from "../../stores/useWorkspaceStore";
 import {
   ENTITY_TYPES,
   entityTypeLabel,
@@ -26,6 +27,7 @@ function messageOf(error: unknown): string {
 export function SearchPage() {
   const navigate = useNavigate();
   const openPath = useEditorStore((s) => s.openPath);
+  const revealPath = useWorkspaceStore((s) => s.revealPath);
   const selectMeeting = useMeetingStore((s) => s.selectMeeting);
   const selectTask = useTaskStore((s) => s.select);
   const focusEvent = useCalendarStore((s) => s.setFocusEventId);
@@ -113,6 +115,7 @@ export function SearchPage() {
     try {
       if (result.entityType === "file" && result.path) {
         // 検索したファイルは自動的にメモ（エディタ）で開く
+        await revealPath(result.path);
         navigate("/workspace");
         await openPath(result.path);
       } else if (result.entityType === "meeting") {

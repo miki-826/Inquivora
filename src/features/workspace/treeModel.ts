@@ -29,6 +29,17 @@ export function isSameOrDescendant(ancestor: string, path: string): boolean {
   return path === ancestor || path.startsWith(`${ancestor}/`);
 }
 
+/** ワークスペース配下の絶対パスをツリー用の相対パスへ変換する。 */
+export function relativePathFromAbsolute(rootPath: string, absolutePath: string): string | null {
+  const normalize = (path: string) => path.replace(/\//g, "\\").replace(/\\+$/, "");
+  const root = normalize(rootPath);
+  const absolute = normalize(absolutePath);
+  if (absolute.toLowerCase() === root.toLowerCase()) return "";
+  const prefix = `${root}\\`;
+  if (!absolute.toLowerCase().startsWith(prefix.toLowerCase())) return null;
+  return absolute.slice(prefix.length).split("\\").filter(Boolean).join("/");
+}
+
 export function flattenTree(
   children: Record<string, TreeEntry[] | undefined>,
   expanded: ReadonlySet<string>,

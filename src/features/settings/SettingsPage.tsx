@@ -173,6 +173,8 @@ function AppearanceSettingsSection() {
   const setPreference = useThemeStore((s) => s.setPreference);
   const navigationPosition = useSettingsStore((s) => s.navigationPosition);
   const setNavigationPosition = useSettingsStore((s) => s.setNavigationPosition);
+  const taskListFontSize = useSettingsStore((s) => s.taskListFontSize);
+  const setTaskListFontSize = useSettingsStore((s) => s.setTaskListFontSize);
 
   return (
     <section className="settings-section">
@@ -212,6 +214,25 @@ function AppearanceSettingsSection() {
           >
             上部
           </button>
+        </div>
+      </div>
+      <div className="settings-field">
+        カレンダーのタスク文字サイズ
+        <div className="theme-options" role="group" aria-label="カレンダーのタスク文字サイズ">
+          {[
+            ["small", "小"],
+            ["medium", "中"],
+            ["large", "大"],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              className={`theme-option${taskListFontSize === value ? " theme-option--on" : ""}`}
+              onClick={() => setTaskListFontSize(value as "small" | "medium" | "large")}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
     </section>

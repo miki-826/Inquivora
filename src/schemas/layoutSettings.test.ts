@@ -8,6 +8,7 @@ describe("parseLayoutSettings", () => {
       rightSidebarWidth: 400,
       lastScreen: "/tasks",
       navigationPosition: "top" as const,
+      taskListFontSize: "large" as const,
     };
     expect(parseLayoutSettings(value)).toEqual(value);
   });
@@ -24,6 +25,7 @@ describe("parseLayoutSettings", () => {
       rightSidebarWidth: 400,
       lastScreen: "/tasks",
       navigationPosition: "side",
+      taskListFontSize: "small",
     });
   });
 

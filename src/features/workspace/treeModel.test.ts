@@ -4,6 +4,7 @@ import {
   isSameOrDescendant,
   joinPath,
   parentPath,
+  relativePathFromAbsolute,
   type TreeEntry,
 } from "./treeModel";
 
@@ -56,6 +57,13 @@ describe("isSameOrDescendant", () => {
   it("前方一致だけの別パスは子孫ではない", () => {
     expect(isSameOrDescendant("docs", "docs2/a.md")).toBe(false);
     expect(isSameOrDescendant("docs/sub", "docs")).toBe(false);
+  });
+});
+
+describe("relativePathFromAbsolute", () => {
+  it("ワークスペース内の絶対パスをツリーの相対パスに変換する", () => {
+    expect(relativePathFromAbsolute("C:\\work", "C:\\work\\docs\\memo.md")).toBe("docs/memo.md");
+    expect(relativePathFromAbsolute("C:\\work", "C:\\other\\memo.md")).toBeNull();
   });
 });
 

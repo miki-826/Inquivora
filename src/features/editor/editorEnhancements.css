@@ -9,9 +9,13 @@
 
 /* Ctrl+F の検索バーはボタンが密集していて、ホバーのたびに説明が出ると
    ボタン自体を押せなくなる。title属性はJS側で外し、Monaco独自のホバーも隠す。 */
-.editor-pane__monaco .find-widget .monaco-hover,
-.editor-pane__monaco .find-widget .monaco-hover-content {
+/* Monaco の説明ポップアップは find-widget の子要素ではなく、エディタ直下に
+   別レイヤーとして追加される。検索ボタンの上でポップアップがクリックを覆わない
+   よう、エディタ内の Monaco ホバーを非表示にする。 */
+.editor-pane__monaco .monaco-hover,
+.editor-pane__monaco .monaco-hover-content {
   display: none !important;
+  pointer-events: none !important;
 }
 
 .modal-backdrop {

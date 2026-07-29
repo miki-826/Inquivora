@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
 import { getEvent, type EventPatch } from "../../services/events";
 import { useCalendarStore } from "../../stores/useCalendarStore";
+import { useSettingsStore } from "../../stores/useSettingsStore";
 import { TASK_COLOR_VALUES, TOKYO_TZ, type Task } from "../tasks/taskModel";
 import { buildCalendarInputs, shiftDateString } from "./calendarModel";
 import { EventPanel, type CalendarSelection, type EventDraft } from "./EventPanel";
@@ -49,7 +50,13 @@ function draftFromSelect(info: DateSelectArg): EventDraft {
 
 type EventChangeArg = { event: EventApi; revert: () => void };
 
-function UnscheduledTasks({ tasks }: { tasks: Task[] }) {
+function UnscheduledTasks({
+  tasks,
+  fontSize,
+}: {
+  tasks: Task[];
+  fontSize: "small" | "medium" | "large";
+}) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const unscheduled = tasks.filter(
     (task) => !task.dueAtUtc && task.status !== "completed" && task.status !== "cancelled",
@@ -77,7 +84,7 @@ function UnscheduledTasks({ tasks }: { tasks: Task[] }) {
   }, []);
 
   return (
-    <div className="calendar-unscheduled" ref={containerRef}>
+    <div className={`calendar-unscheduled calendar-unscheduled--${fontSize}`} ref={containerRef}>
       <h2 className="pane-title">未予定タスク</h2>
       <p className="calendar-unscheduled__hint">カレンダーへドラッグして期日を設定</p>
       {unscheduled.length === 0 ? (
@@ -112,6 +119,7 @@ export function CalendarPage() {
   const scheduleTask = useCalendarStore((s) => s.scheduleTask);
   const focusEventId = useCalendarStore((s) => s.focusEventId);
   const setFocusEventId = useCalendarStore((s) => s.setFocusEventId);
+  const taskListFontSize = useSettingsStore((s) => s.taskListFontSize);
   const [selection, setSelection] = useState<CalendarSelection>(null);
   const calendarRef = useRef<FullCalendar | null>(null);
 
@@ -184,7 +192,7 @@ export function CalendarPage() {
 
   return (
     <ThreePaneLayout
-      left={<UnscheduledTasks tasks={tasks} />}
+      left={<UnscheduledTasks tasks={tasks} fontSize={taskListFontSize} />}
       right={<EventPanel selection={selection} onClose={() => setSelection(null)} />}
       leftLabel="タスク設定"
       rightLabel="予定詳細"

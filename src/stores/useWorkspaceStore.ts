@@ -4,6 +4,7 @@ import {
   isSameOrDescendant,
   joinPath,
   parentPath,
+  relativePathFromAbsolute,
   type TreeEntry,
 } from "../features/workspace/treeModel";
 import { reindexWorkspace } from "../services/search";
@@ -33,6 +34,7 @@ type WorkspaceStore = {
   openWorkspacePath: (path: string) => Promise<void>;
   restoreLastWorkspace: () => Promise<void>;
   toggleFolder: (relativePath: string) => Promise<void>;
+  revealPath: (absolutePath: string) => Promise<void>;
   refresh: () => Promise<void>;
   select: (relativePath: string | null) => void;
   startEditing: (editing: TreeEditing) => void;
@@ -192,6 +194,29 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
         }
       }
       await persistExpanded();
+    },
+
+    revealPath: async (absolutePath) => {
+      const { workspace } = get();
+      if (!workspace) return;
+      const relativePath = relativePathFromAbsolute(workspace.rootPath, absolutePath);
+      if (relativePath === null) return;
+      const ancestors = relativePath
+        .split("/")
+        .slice(0, -1)
+        .map((_, index, parts) => parts.slice(0, index + 1).join("/"));
+      await runTreeAction(async () => {
+        for (const folder of ancestors) {
+          if (!get().expanded.includes(folder)) {
+            set((state) => ({ expanded: [...state.expanded, folder] }));
+          }
+          if (!get().children[folder]) {
+            await loadChildrenOf(folder);
+          }
+        }
+        set({ selectedPath: relativePath });
+        await persistExpanded();
+      });
     },
 
     refresh: async () => {
