@@ -3001,27 +3001,27 @@ input[type="radio"] {
 }
 
 /* --------------------------------------------------------------------------
-   Monochrome notebook theme
+   Refined notebook interface
    Visual-only refinement: preserve the existing component structure and UI
    behaviour while making hierarchy come from typography, spacing and borders.
    -------------------------------------------------------------------------- */
 :root {
-  --color-bg: #f6f6f4;
+  --color-bg: #f6f8fc;
   --color-surface: #ffffff;
-  --color-surface-subtle: #efefec;
-  --color-border: #deded9;
+  --color-surface-subtle: #f8fafc;
+  --color-border: #dce3ef;
   --color-input-bg: #ffffff;
-  --color-input-border: #c9c9c3;
-  --color-text: #1b1b1a;
-  --color-text-muted: #70706b;
-  --color-primary: #6b4e3d;
-  --color-primary-hover: #513a2d;
-  --color-primary-soft: #f1e8df;
-  --color-primary-ring: rgba(107, 78, 61, 0.18);
-  --color-success: #3d5c48;
-  --color-warning: #76633a;
-  --color-danger: #a3433b;
-  --color-purple: #5b5b58;
+  --color-input-border: #cdd5e4;
+  --color-text: #172033;
+  --color-text-muted: #667085;
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-soft: #eaf2ff;
+  --color-primary-ring: rgba(37, 99, 235, 0.18);
+  --color-success: #16a34a;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --color-purple: #7c3aed;
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 10px;
@@ -3029,22 +3029,22 @@ input[type="radio"] {
 }
 
 :root[data-theme="dark"] {
-  --color-bg: #151515;
-  --color-surface: #1c1c1b;
-  --color-surface-subtle: #242422;
-  --color-border: #333330;
-  --color-input-bg: #1a1a19;
-  --color-input-border: #4a4a45;
-  --color-text: #ebebe7;
-  --color-text-muted: #a7a7a0;
-  --color-primary: #050505;
-  --color-primary-hover: #000000;
-  --color-primary-soft: #30302d;
-  --color-primary-ring: rgba(235, 235, 231, 0.18);
-  --color-success: #9bb5a1;
-  --color-warning: #c2ad7b;
-  --color-danger: #e09a91;
-  --color-purple: #c2c2ba;
+  --color-bg: #0f141c;
+  --color-surface: #1a2130;
+  --color-surface-subtle: #222b3b;
+  --color-border: #2c3648;
+  --color-input-bg: #131a25;
+  --color-input-border: #3a465b;
+  --color-text: #e6ebf4;
+  --color-text-muted: #9aa6bd;
+  --color-primary: #4f86f7;
+  --color-primary-hover: #6a9bff;
+  --color-primary-soft: #1e2b44;
+  --color-primary-ring: rgba(79, 134, 247, 0.3);
+  --color-success: #34d399;
+  --color-warning: #fbbf24;
+  --color-danger: #f87171;
+  --color-purple: #a78bfa;
   color-scheme: dark;
 }
 
@@ -3140,12 +3140,12 @@ textarea:focus {
 
 .three-pane__left,
 .three-pane__right {
-  background: #f2f2ef;
+  background: var(--color-surface-subtle);
 }
 
 :root[data-theme="dark"] .three-pane__left,
 :root[data-theme="dark"] .three-pane__right {
-  background: #1a1a19;
+  background: var(--color-surface-subtle);
 }
 
 .three-pane__toggle {
@@ -3157,7 +3157,7 @@ textarea:focus {
 .resize-handle--active,
 .editor-split-resize:hover,
 .editor-split-resize--active {
-  background: var(--color-text);
+  background: var(--color-primary);
 }
 
 .pane-section__title,
@@ -3173,7 +3173,7 @@ textarea:focus {
 
 .file-tree__actions button:hover,
 .file-tree__recent-item:hover {
-  color: var(--color-text);
+  color: var(--color-primary);
   background: var(--color-primary-soft);
 }
 
@@ -3187,9 +3187,9 @@ textarea:focus {
 .task-row--selected,
 .task-filter__preset--active,
 .settings-nav__link.active {
-  color: var(--color-text);
+  color: var(--color-primary);
   background: var(--color-primary-soft);
-  box-shadow: inset 2px 0 0 var(--color-text);
+  box-shadow: inset 2px 0 0 var(--color-primary);
 }
 
 .file-tree__open-button,
@@ -3236,11 +3236,11 @@ textarea:focus {
 
 .editor-tabs {
   min-height: 36px;
-  background: #f1f1ee;
+  background: var(--color-surface-subtle);
 }
 
 :root[data-theme="dark"] .editor-tabs {
-  background: #191918;
+  background: var(--color-surface-subtle);
 }
 
 .editor-tab {
@@ -3254,7 +3254,7 @@ textarea:focus {
 }
 
 .editor-tab--active {
-  box-shadow: inset 0 2px 0 var(--color-text);
+  box-shadow: inset 0 2px 0 var(--color-primary);
 }
 
 .editor-tab--secondary {
@@ -3289,7 +3289,7 @@ textarea:focus {
 }
 
 .theme-option--on {
-  color: var(--color-text);
+  color: var(--color-primary);
 }
 
 .search-scope--on {
@@ -3318,12 +3318,10 @@ textarea:focus {
   background: var(--color-surface);
 }
 
-.search-result__type--file,
-.search-result__type--meeting,
-.search-result__type--task,
-.search-result__type--event {
-  background: #4d4d49;
-}
+.search-result__type--file { background: #4a7ebb; }
+.search-result__type--meeting { background: #7e57c2; }
+.search-result__type--task { background: #2e9e6b; }
+.search-result__type--event { background: #e0872e; }
 
 .task-list {
   padding: 18px 20px;
@@ -3353,7 +3351,7 @@ textarea:focus {
 
 .task-row__badge--status,
 .reminder-section__repeat {
-  color: var(--color-text);
+  color: var(--color-primary);
   background: var(--color-primary-soft);
 }
 
@@ -3369,11 +3367,11 @@ textarea:focus {
 
 .calendar-page .fc {
   --fc-today-bg-color: var(--color-primary-soft);
-  --fc-button-hover-border-color: var(--color-text);
+  --fc-button-hover-border-color: var(--color-primary);
   --fc-button-active-bg-color: var(--color-primary);
   --fc-button-active-border-color: var(--color-primary);
-  --fc-event-bg-color: #3f3f3c;
-  --fc-event-border-color: #3f3f3c;
+  --fc-event-bg-color: var(--color-primary);
+  --fc-event-border-color: var(--color-primary);
 }
 
 .calendar-page .fc .fc-button {
@@ -3422,13 +3420,17 @@ textarea:focus {
 }
 
 .meeting-segment {
-  border-left-color: var(--color-text-muted);
+  border-left-color: #00bfff;
   border-radius: var(--radius-sm);
 }
 
 .meeting-segment--mic,
 .meeting-segment--loopback {
-  border-left-color: var(--color-text-muted);
+  border-left-color: var(--color-success);
+}
+
+.meeting-segment--loopback {
+  border-left-color: #00bfff;
 }
 
 .whisper-model__badge {
@@ -3437,9 +3439,9 @@ textarea:focus {
 
 :root[data-theme="dark"] .vertical-nav__item.active,
 :root[data-theme="dark"] .vertical-nav--top .vertical-nav__item.active {
-  color: #111;
-  background: #ededE8;
-  border-color: #ededE8;
+  color: #fff;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
 }
 
 :root[data-theme="dark"] .file-tree__open-button,

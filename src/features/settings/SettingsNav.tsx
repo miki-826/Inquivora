@@ -12,7 +12,6 @@ export function SettingsNav() {
           AI・API
         </NavLink>
       </nav>
-      <div className="settings-nav-note">エディタ・会議の詳細設定は今後のPhaseで実装予定</div>
     </div>
   );
 }
