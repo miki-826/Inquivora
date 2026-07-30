@@ -135,6 +135,9 @@ export function FileTree({ onOpenFile }: FileTreeProps) {
     if (source) void store.getState().moveByDrop(source, targetFolder);
   };
 
+  const isOverTreeRow = (target: EventTarget | null): boolean =>
+    target instanceof Element && target.closest(".file-tree__row") !== null;
+
   const renderInput = (depth: number) => (
     <div className="file-tree__row" style={{ paddingLeft: 8 + depth * 14 }}>
       <span className="file-tree__chevron" />
@@ -214,11 +217,17 @@ export function FileTree({ onOpenFile }: FileTreeProps) {
         role="tree"
         aria-label="ファイルツリー"
         onDragOver={(e) => {
+          if (isOverTreeRow(e.target)) return;
           e.preventDefault();
           setDropTarget("");
         }}
-        onDragLeave={() => setDropTarget(null)}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+            setDropTarget(null);
+          }
+        }}
         onDrop={(e) => {
+          if (isOverTreeRow(e.target)) return;
           e.preventDefault();
           setDropTarget(null);
           handleDropInto(e, "");
@@ -273,13 +282,21 @@ export function FileTree({ onOpenFile }: FileTreeProps) {
                   }}
                   onDragEnd={() => setDraggingPath(null)}
                   onDragOver={(e) => {
-                    if (!entry.isFolder) return;
+                    if (!entry.isFolder) {
+                      e.stopPropagation();
+                      return;
+                    }
                     e.preventDefault();
                     e.stopPropagation();
                     setDropTarget(entry.relativePath);
                   }}
                   onDrop={(e) => {
-                    if (!entry.isFolder) return;
+                    if (!entry.isFolder) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDropTarget(null);
+                      return;
+                    }
                     e.preventDefault();
                     e.stopPropagation();
                     setDropTarget(null);

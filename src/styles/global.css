@@ -652,8 +652,9 @@ input[type="radio"] {
 }
 
 .file-tree__row--drop {
-  outline: 2px dashed var(--color-primary);
-  outline-offset: -2px;
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 
 .file-tree__trash {
@@ -3013,10 +3014,10 @@ input[type="radio"] {
   --color-input-border: #c9c9c3;
   --color-text: #1b1b1a;
   --color-text-muted: #70706b;
-  --color-primary: #1b1b1a;
-  --color-primary-hover: #000000;
-  --color-primary-soft: #e8e8e4;
-  --color-primary-ring: rgba(27, 27, 26, 0.16);
+  --color-primary: #6b4e3d;
+  --color-primary-hover: #513a2d;
+  --color-primary-soft: #f1e8df;
+  --color-primary-ring: rgba(107, 78, 61, 0.18);
   --color-success: #3d5c48;
   --color-warning: #76633a;
   --color-danger: #a3433b;
