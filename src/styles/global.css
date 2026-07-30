@@ -2998,3 +2998,460 @@ input[type="radio"] {
   margin: 0;
   padding-left: 32px;
 }
+
+/* --------------------------------------------------------------------------
+   Monochrome notebook theme
+   Visual-only refinement: preserve the existing component structure and UI
+   behaviour while making hierarchy come from typography, spacing and borders.
+   -------------------------------------------------------------------------- */
+:root {
+  --color-bg: #f6f6f4;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #efefec;
+  --color-border: #deded9;
+  --color-input-bg: #ffffff;
+  --color-input-border: #c9c9c3;
+  --color-text: #1b1b1a;
+  --color-text-muted: #70706b;
+  --color-primary: #1b1b1a;
+  --color-primary-hover: #000000;
+  --color-primary-soft: #e8e8e4;
+  --color-primary-ring: rgba(27, 27, 26, 0.16);
+  --color-success: #3d5c48;
+  --color-warning: #76633a;
+  --color-danger: #a3433b;
+  --color-purple: #5b5b58;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --color-bg: #151515;
+  --color-surface: #1c1c1b;
+  --color-surface-subtle: #242422;
+  --color-border: #333330;
+  --color-input-bg: #1a1a19;
+  --color-input-border: #4a4a45;
+  --color-text: #ebebe7;
+  --color-text-muted: #a7a7a0;
+  --color-primary: #050505;
+  --color-primary-hover: #000000;
+  --color-primary-soft: #30302d;
+  --color-primary-ring: rgba(235, 235, 231, 0.18);
+  --color-success: #9bb5a1;
+  --color-warning: #c2ad7b;
+  --color-danger: #e09a91;
+  --color-purple: #c2c2ba;
+  color-scheme: dark;
+}
+
+body {
+  font-family: Inter, "Segoe UI Variable", "Yu Gothic UI", "Meiryo UI", sans-serif;
+  letter-spacing: 0.005em;
+  background: var(--color-bg);
+}
+
+button {
+  transition: background-color 0.14s ease, border-color 0.14s ease,
+    color 0.14s ease, box-shadow 0.14s ease;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="url"],
+input[type="number"],
+input[type="time"],
+input[type="date"],
+input[type="search"],
+input:not([type]),
+select,
+textarea {
+  box-shadow: none;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="url"]:focus,
+input[type="number"]:focus,
+input[type="time"]:focus,
+input[type="date"]:focus,
+input[type="search"]:focus,
+input:not([type]):focus,
+select:focus,
+textarea:focus {
+  box-shadow: 0 0 0 3px var(--color-primary-ring);
+}
+
+.toolbar {
+  padding: 0 18px;
+  background: color-mix(in srgb, var(--color-surface) 94%, var(--color-bg));
+}
+
+.toolbar__brand {
+  color: var(--color-text);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.toolbar__screen {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.vertical-nav {
+  padding: 10px 6px;
+  background: var(--color-surface);
+}
+
+.vertical-nav__item {
+  width: 62px;
+  padding: 9px 2px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+}
+
+.vertical-nav__item:hover {
+  background: var(--color-surface-subtle);
+}
+
+.vertical-nav__item.active {
+  color: #fff;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16);
+}
+
+.vertical-nav--top .vertical-nav__item.active {
+  color: #fff;
+}
+
+.vertical-nav__label {
+  font-size: 10px;
+  letter-spacing: 0.01em;
+}
+
+.status-bar {
+  background: var(--color-surface);
+  font-size: 11px;
+}
+
+.three-pane__left,
+.three-pane__right {
+  background: #f2f2ef;
+}
+
+:root[data-theme="dark"] .three-pane__left,
+:root[data-theme="dark"] .three-pane__right {
+  background: #1a1a19;
+}
+
+.three-pane__toggle {
+  border-radius: var(--radius-sm);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.resize-handle:hover,
+.resize-handle--active,
+.editor-split-resize:hover,
+.editor-split-resize--active {
+  background: var(--color-text);
+}
+
+.pane-section__title,
+.pane-title {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.file-tree__header {
+  padding: 10px;
+}
+
+.file-tree__actions button:hover,
+.file-tree__recent-item:hover {
+  color: var(--color-text);
+  background: var(--color-primary-soft);
+}
+
+.file-tree__row {
+  margin: 0 5px;
+  width: calc(100% - 10px);
+  border-radius: var(--radius-sm);
+}
+
+.file-tree__row--selected,
+.task-row--selected,
+.task-filter__preset--active,
+.settings-nav__link.active {
+  color: var(--color-text);
+  background: var(--color-primary-soft);
+  box-shadow: inset 2px 0 0 var(--color-text);
+}
+
+.file-tree__open-button,
+.meeting-page__start,
+.meeting-dialog__start,
+.ws-meeting-panel__start,
+.ai-panel__generate,
+.meeting-setup-hint__button,
+.event-form__submit,
+.conflict-dialog__actions button:first-child {
+  color: #fff;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  box-shadow: none;
+}
+
+.file-tree__open-button:hover,
+.meeting-page__start:hover,
+.meeting-dialog__start:hover:not(:disabled),
+.ws-meeting-panel__start:hover,
+.ai-panel__generate:hover:not(:disabled),
+.meeting-setup-hint__button:hover {
+  background: var(--color-primary-hover);
+  box-shadow: none;
+  filter: none;
+}
+
+.context-menu,
+.meeting-dialog,
+.conflict-dialog {
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.16);
+}
+
+.context-menu__item:hover:not(:disabled),
+.task-filter__preset:hover,
+.settings-nav__link:hover {
+  background: var(--color-primary-soft);
+}
+
+.editor-area,
+.editor-pane {
+  background: var(--color-surface);
+}
+
+.editor-tabs {
+  min-height: 36px;
+  background: #f1f1ee;
+}
+
+:root[data-theme="dark"] .editor-tabs {
+  background: #191918;
+}
+
+.editor-tab {
+  padding: 0 10px 0 12px;
+  border-right-color: transparent;
+}
+
+.editor-tab:hover {
+  background: color-mix(in srgb, var(--color-surface) 65%, var(--color-surface-subtle));
+  color: var(--color-text);
+}
+
+.editor-tab--active {
+  box-shadow: inset 0 2px 0 var(--color-text);
+}
+
+.editor-tab--secondary {
+  box-shadow: inset 0 -2px 0 var(--color-text-muted);
+}
+
+.editor-toolbar {
+  padding: 5px 12px;
+  background: var(--color-surface);
+}
+
+.editor-toolbar__badge,
+.search-chip--on,
+.provider-card__badge,
+.whisper-model__badge {
+  color: #fff;
+  background: var(--color-primary);
+}
+
+.search-page,
+.calendar-page {
+  background: var(--color-bg);
+}
+
+.search-page {
+  padding: 20px 24px;
+}
+
+.search-page__scope {
+  padding: 3px;
+  border-radius: var(--radius-md);
+}
+
+.theme-option--on {
+  color: var(--color-text);
+}
+
+.search-scope--on {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.search-page__input {
+  border-radius: var(--radius-md);
+}
+
+.search-result,
+.settings-section,
+.provider-card,
+.meeting-recording,
+.meeting-dialog__privacy {
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+.search-result {
+  padding: 12px 14px;
+}
+
+.search-result:hover {
+  border-color: var(--color-text-muted);
+  background: var(--color-surface);
+}
+
+.search-result__type--file,
+.search-result__type--meeting,
+.search-result__type--task,
+.search-result__type--event {
+  background: #4d4d49;
+}
+
+.task-list {
+  padding: 18px 20px;
+}
+
+.task-list__add input {
+  border-radius: var(--radius-md);
+}
+
+.task-row {
+  padding: 8px 10px;
+  border: 1px solid transparent;
+}
+
+.task-row:hover {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+}
+
+.task-row__badge,
+.task-group__count,
+.provider-card__type,
+.meeting-status,
+.reminder-section__status {
+  border-radius: var(--radius-sm);
+}
+
+.task-row__badge--status,
+.reminder-section__repeat {
+  color: var(--color-text);
+  background: var(--color-primary-soft);
+}
+
+.task-detail,
+.event-form,
+.event-panel__task {
+  padding: 16px;
+}
+
+.calendar-page {
+  padding: 18px 22px 20px;
+}
+
+.calendar-page .fc {
+  --fc-today-bg-color: var(--color-primary-soft);
+  --fc-button-hover-border-color: var(--color-text);
+  --fc-button-active-bg-color: var(--color-primary);
+  --fc-button-active-border-color: var(--color-primary);
+  --fc-event-bg-color: #3f3f3c;
+  --fc-event-border-color: #3f3f3c;
+}
+
+.calendar-page .fc .fc-button {
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+}
+
+.calendar-page .fc .fc-button-active {
+  color: #fff;
+}
+
+.calendar-page .fc-daygrid-event {
+  border-radius: 3px;
+}
+
+.settings-page {
+  padding: 24px 28px;
+  gap: 18px;
+  max-width: 620px;
+}
+
+.settings-section {
+  padding: 18px 20px;
+}
+
+.settings-section__title {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.binding-row {
+  border-radius: var(--radius-md);
+}
+
+.meeting-page__toolbar {
+  padding: 18px 20px 0;
+}
+
+.meeting-active {
+  padding: 18px 20px;
+}
+
+.meeting-list__item,
+.meeting-dialog {
+  border-radius: var(--radius-md);
+}
+
+.meeting-segment {
+  border-left-color: var(--color-text-muted);
+  border-radius: var(--radius-sm);
+}
+
+.meeting-segment--mic,
+.meeting-segment--loopback {
+  border-left-color: var(--color-text-muted);
+}
+
+.whisper-model__badge {
+  border-radius: var(--radius-sm);
+}
+
+:root[data-theme="dark"] .vertical-nav__item.active,
+:root[data-theme="dark"] .vertical-nav--top .vertical-nav__item.active {
+  color: #111;
+  background: #ededE8;
+  border-color: #ededE8;
+}
+
+:root[data-theme="dark"] .file-tree__open-button,
+:root[data-theme="dark"] .meeting-page__start,
+:root[data-theme="dark"] .meeting-dialog__start,
+:root[data-theme="dark"] .ws-meeting-panel__start,
+:root[data-theme="dark"] .ai-panel__generate,
+:root[data-theme="dark"] .meeting-setup-hint__button,
+:root[data-theme="dark"] .event-form__submit,
+:root[data-theme="dark"] .conflict-dialog__actions button:first-child,
+:root[data-theme="dark"] .editor-toolbar__badge,
+:root[data-theme="dark"] .search-chip--on,
+:root[data-theme="dark"] .provider-card__badge,
+:root[data-theme="dark"] .whisper-model__badge {
+  color: #f6f6f2;
+}
