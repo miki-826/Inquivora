@@ -376,32 +376,97 @@ fn user_content_with_repair(request: &SummaryRequest, repair_note: Option<&str>)
     }
 }
 
-fn chat_body(request: &SummaryRequest, repair_note: Option<&str>) -> serde_json::Value {
+fn meeting_output_schema() -> serde_json::Value {
     serde_json::json!({
+        "type": "object",
+        "properties": {
+            "title": { "type": "string" },
+            "summary": { "type": "string" },
+            "decisions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "text": { "type": "string" },
+                        "sourceStartMs": { "type": ["integer", "null"] }
+                    },
+                    "required": ["text", "sourceStartMs"],
+                    "additionalProperties": false
+                }
+            },
+            "taskCandidates": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "title": { "type": "string" },
+                        "description": { "type": ["string", "null"] },
+                        "assignee": { "type": ["string", "null"] },
+                        "dueAt": { "type": ["string", "null"] },
+                        "priority": { "type": "string", "enum": ["high", "medium", "low"] },
+                        "sourceStartMs": { "type": ["integer", "null"] }
+                    },
+                    "required": [
+                        "title", "description", "assignee", "dueAt", "priority", "sourceStartMs"
+                    ],
+                    "additionalProperties": false
+                }
+            },
+            "openQuestions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "text": { "type": "string" },
+                        "sourceStartMs": { "type": ["integer", "null"] }
+                    },
+                    "required": ["text", "sourceStartMs"],
+                    "additionalProperties": false
+                }
+            }
+        },
+        "required": ["title", "summary", "decisions", "taskCandidates", "openQuestions"],
+        "additionalProperties": false
+    })
+}
+
+fn chat_body(request: &SummaryRequest, repair_note: Option<&str>) -> serde_json::Value {
+    let mut body = serde_json::json!({
         "model": request.model,
-        "temperature": 0.2,
-        "response_format": { "type": "json_object" },
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "inquivora_meeting_minutes",
+                "strict": true,
+                "schema": meeting_output_schema()
+            }
+        },
         "messages": [
             { "role": "system", "content": request.system_prompt },
             { "role": "user", "content": user_content_with_repair(request, repair_note) },
         ],
-    })
+    });
+    // GPT-5系の推論モデルではtemperatureが非対応のため送らない。
+    // 従来モデルは既存の低めのtemperatureを維持する。
+    if !request.model.starts_with("gpt-5") && !request.model.starts_with('o') {
+        body["temperature"] = serde_json::json!(0.2);
+    }
+    body
 }
 
 const GEMINI_MAX_OUTPUT_TOKENS: u32 = 8192;
 
 fn gemini_body(request: &SummaryRequest, repair_note: Option<&str>) -> serde_json::Value {
-    let mut generation_config = serde_json::json!({
-        "responseMimeType": "application/json",
-        "temperature": 0.2,
+    let generation_config = serde_json::json!({
+        "responseFormat": {
+            "text": {
+                "mimeType": "application/json",
+                "schema": meeting_output_schema()
+            }
+        },
         "maxOutputTokens": GEMINI_MAX_OUTPUT_TOKENS,
+        "thinkingConfig": { "thinkingLevel": "low" },
     });
-    // Gemini 2.5系は既定で思考トークンを出力上限から消費し、本文が空のまま
-    // finishReason=MAX_TOKENSで返ることがある。無効化できるflash系だけ切る
-    // （proは思考を止められず、thinkingBudget:0を送ると400になる）。
-    if request.model.contains("flash") {
-        generation_config["thinkingConfig"] = serde_json::json!({ "thinkingBudget": 0 });
-    }
     serde_json::json!({
         "systemInstruction": { "parts": [{ "text": request.system_prompt }] },
         "contents": [
@@ -743,7 +808,22 @@ mod tests {
         assert!(req.head.starts_with("POST /v1/chat/completions"));
         let body = String::from_utf8_lossy(&req.body);
         assert!(body.contains("\"model\":\"gpt-4o\""));
-        assert!(body.contains("json_object"));
+        assert!(body.contains("\"type\":\"json_schema\""));
+        assert!(body.contains("\"strict\":true"));
+        assert!(body.contains("\"taskCandidates\""));
+        assert!(body.contains("\"temperature\":0.2"));
+    }
+
+    #[test]
+    fn gpt5系の議事録リクエストにはtemperatureを送らない() {
+        let request = SummaryRequest {
+            model: "gpt-5.6-terra".to_string(),
+            system_prompt: "system".to_string(),
+            user_content: "content".to_string(),
+        };
+        let body = chat_body(&request, None);
+        assert!(body.get("temperature").is_none());
+        assert_eq!(body["response_format"]["type"], "json_schema");
     }
 
     #[tokio::test]
@@ -858,40 +938,26 @@ mod tests {
         assert!(req.head.to_lowercase().contains("x-goog-api-key: g-key"));
         let sent = String::from_utf8_lossy(&req.body);
         assert!(sent.contains("systemInstruction"));
-        assert!(sent.contains("responseMimeType"));
+        assert!(sent.contains("responseFormat"));
+        assert!(sent.contains("taskCandidates"));
     }
 
     #[tokio::test]
-    async fn gemini本文は出力上限と思考無効化を指定する() {
+    async fn gemini本文は出力上限と低い思考レベルを指定する() {
         let body = format!(r#"{{"candidates":[{{"content":{{"parts":[{{"text":"{SUMMARY_JSON}"}}]}}}}]}}"#);
         let leaked: &'static str = Box::leak(body.into_boxed_str());
         let (base, rx) = spawn_mock_server_root("HTTP/1.1 200 OK", leaked);
         let mut profile = provider_runtime("gemini", &base, Some("g-key"));
         profile.provider_type = "gemini".to_string();
         let request = SummaryRequest {
-            model: "gemini-2.5-flash".to_string(),
+            model: "gemini-3.6-flash".to_string(),
             ..summary_request()
         };
         generate_summary(&profile, request).await.unwrap();
         let sent = String::from_utf8_lossy(&rx.recv().unwrap().body).to_string();
         assert!(sent.contains("\"maxOutputTokens\""), "{sent}");
-        assert!(sent.contains("\"thinkingBudget\":0"), "{sent}");
-    }
-
-    #[tokio::test]
-    async fn geminiのproモデルは思考予算を指定しない() {
-        let body = format!(r#"{{"candidates":[{{"content":{{"parts":[{{"text":"{SUMMARY_JSON}"}}]}}}}]}}"#);
-        let leaked: &'static str = Box::leak(body.into_boxed_str());
-        let (base, rx) = spawn_mock_server_root("HTTP/1.1 200 OK", leaked);
-        let request = SummaryRequest {
-            model: "gemini-2.5-pro".to_string(),
-            ..summary_request()
-        };
-        generate_summary(&provider_runtime("gemini", &base, Some("g-key")), request)
-            .await
-            .unwrap();
-        let sent = String::from_utf8_lossy(&rx.recv().unwrap().body).to_string();
-        assert!(!sent.contains("thinkingBudget"), "{sent}");
+        assert!(sent.contains("\"thinkingLevel\":\"low\""), "{sent}");
+        assert!(sent.contains("\"mimeType\":\"application/json\""), "{sent}");
     }
 
     #[tokio::test]

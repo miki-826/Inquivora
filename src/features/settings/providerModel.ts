@@ -11,8 +11,15 @@ export type ProviderPreset = {
   editableBaseUrl: boolean;
   models: string[];
   defaultModel: string;
+  summaryModels: SummaryModelOption[];
+  defaultSummaryModel: string;
   transcriptionModels: string[];
   defaultTranscriptionModel: string;
+};
+
+export type SummaryModelOption = {
+  id: string;
+  label: string;
 };
 
 /// 対応AIごとの既定設定。UIはこの表だけを見せ、Base URLや認証方式の手入力を不要にする。
@@ -25,6 +32,18 @@ export const PROVIDER_PRESETS: Record<ProviderType, ProviderPreset> = {
     editableBaseUrl: false,
     models: ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "o4-mini"],
     defaultModel: "gpt-4o-mini",
+    summaryModels: [
+      { id: "gpt-5.6-sol", label: "GPT-5.6 Sol（最高品質）" },
+      { id: "gpt-5.6-terra", label: "GPT-5.6 Terra（品質・コストのバランス）" },
+      { id: "gpt-5.6-luna", label: "GPT-5.6 Luna（高速・低コスト）" },
+      { id: "gpt-5.4", label: "GPT-5.4（高品質）" },
+      { id: "gpt-5.4-mini", label: "GPT-5.4 mini（軽量）" },
+      { id: "gpt-5-mini", label: "GPT-5 mini（軽量）" },
+      { id: "gpt-4.1", label: "GPT-4.1（従来互換）" },
+      { id: "gpt-4o", label: "GPT-4o（従来互換）" },
+      { id: "gpt-4o-mini", label: "GPT-4o mini（従来の低コスト）" },
+    ],
+    defaultSummaryModel: "gpt-5.6-terra",
     transcriptionModels: [
       "gpt-transcribe",
       "gpt-4o-transcribe",
@@ -41,6 +60,12 @@ export const PROVIDER_PRESETS: Record<ProviderType, ProviderPreset> = {
     editableBaseUrl: false,
     models: ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"],
     defaultModel: "gemini-3.6-flash",
+    summaryModels: [
+      { id: "gemini-3.6-flash", label: "Gemini 3.6 Flash（推奨）" },
+      { id: "gemini-3.5-flash", label: "Gemini 3.5 Flash（従来互換）" },
+      { id: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite（高速・低コスト）" },
+    ],
+    defaultSummaryModel: "gemini-3.6-flash",
     transcriptionModels: ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"],
     defaultTranscriptionModel: "gemini-3.6-flash",
   },

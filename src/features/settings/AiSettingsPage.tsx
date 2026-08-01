@@ -247,13 +247,11 @@ function ProviderCard({
   provider,
   isSummaryProvider,
   onEdit,
-  onUse,
   onReload,
 }: {
   provider: Provider;
   isSummaryProvider: boolean;
   onEdit: () => void;
-  onUse: () => Promise<void>;
   onReload: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
@@ -308,15 +306,6 @@ function ProviderCard({
             編集
           </button>
         )}
-        {!retiredNotice && !isSummaryProvider && provider.enabled && (
-          <button
-            type="button"
-            disabled={busy !== null}
-            onClick={() => void run("use", onUse)}
-          >
-            {busy === "use" ? "設定中…" : "このAIを使う"}
-          </button>
-        )}
         <button
           type="button"
           disabled={busy !== null}
@@ -358,6 +347,135 @@ function ProviderCard({
         </button>
       </div>
     </div>
+  );
+}
+
+function SummaryBindingSection({
+  providers,
+  binding,
+  onSaved,
+}: {
+  providers: Provider[];
+  binding: FeatureBinding | null;
+  onSaved: () => Promise<void>;
+}) {
+  const available = providers.filter(
+    (provider) =>
+      provider.enabled &&
+      provider.capabilities.includes("text.structured_output") &&
+      isProviderType(provider.providerType),
+  );
+  const initialProvider =
+    available.find((provider) => provider.id === binding?.providerProfileId) ?? null;
+  const initialType =
+    initialProvider && isProviderType(initialProvider.providerType)
+      ? initialProvider.providerType
+      : null;
+  const initialPreset = initialType ? PROVIDER_PRESETS[initialType] : null;
+  const initialModel =
+    initialPreset?.summaryModels.some((model) => model.id === binding?.modelId)
+      ? (binding?.modelId ?? "")
+      : (initialPreset?.defaultSummaryModel ?? "");
+  const [providerId, setProviderId] = useState(initialProvider?.id ?? "");
+  const [modelId, setModelId] = useState(initialModel);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const selected = available.find((provider) => provider.id === providerId) ?? null;
+  const selectedType =
+    selected && isProviderType(selected.providerType) ? selected.providerType : null;
+  const preset = selectedType ? PROVIDER_PRESETS[selectedType] : null;
+  const unsupportedSavedModel =
+    binding?.providerProfileId === providerId &&
+    binding.modelId != null &&
+    preset != null &&
+    !preset.summaryModels.some((model) => model.id === binding.modelId)
+      ? binding.modelId
+      : null;
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      if (!selected || !preset) {
+        throw new Error("議事録要約に使用するAIを選択してください");
+      }
+      if (!preset.summaryModels.some((model) => model.id === modelId)) {
+        throw new Error("一覧から議事録要約モデルを選択してください");
+      }
+      await api.setFeatureBinding(SUMMARY_FEATURE_KEY, {
+        providerProfileId: selected.id,
+        modelId,
+        fallbackProviderProfileId: null,
+        fallbackModelId: null,
+      });
+      await onSaved();
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="settings-section">
+      <h2 className="settings-section__title">議事録要約</h2>
+      <p className="settings-note">
+        ChatGPTまたはGeminiと、議事録要約に使うモデルを一覧から選択します。候補には、議事録のJSON形式に対応していることを確認できたモデルだけを表示しています。
+      </p>
+      <div className="binding-row">
+        <label className="settings-field">
+          要約に使用するAI
+          <select
+            value={providerId}
+            onChange={(event) => {
+              const nextId = event.target.value;
+              setProviderId(nextId);
+              const provider = available.find((item) => item.id === nextId);
+              const type =
+                provider && isProviderType(provider.providerType) ? provider.providerType : null;
+              setModelId(type ? PROVIDER_PRESETS[type].defaultSummaryModel : "");
+            }}
+          >
+            <option value="">選択してください</option>
+            {available.map((provider) => (
+              <option key={provider.id} value={provider.id}>
+                {provider.displayName}
+              </option>
+            ))}
+          </select>
+        </label>
+        {preset && (
+          <label className="settings-field">
+            要約モデル
+            <select value={modelId} onChange={(event) => setModelId(event.target.value)}>
+              {preset.summaryModels.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {available.length === 0 && (
+          <p className="settings-note">先にChatGPTまたはGeminiを登録し、有効にしてください。</p>
+        )}
+        {unsupportedSavedModel && (
+          <p className="settings-actions__error">
+            保存済みの「{unsupportedSavedModel}」は形式対応を確認できないため、候補から除外しました。保存すると選択中のモデルへ切り替わります。
+          </p>
+        )}
+        {error && (
+          <p className="settings-actions__error" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="settings-actions">
+          <button type="button" disabled={busy || available.length === 0} onClick={() => void save()}>
+            {busy ? "保存中…" : "議事録要約設定を保存"}
+          </button>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -683,18 +801,6 @@ export function AiSettingsPage() {
       .catch((err) => setError(messageOf(err)));
   }, []);
 
-  const assignToSummary = async (provider: Provider) => {
-    await api.setFeatureBinding(SUMMARY_FEATURE_KEY, {
-      providerProfileId: provider.id,
-      modelId: provider.modelId ?? PROVIDER_PRESETS[
-        isProviderType(provider.providerType) ? provider.providerType : DEFAULT_PROVIDER_TYPE
-      ].defaultModel,
-      fallbackProviderProfileId: null,
-      fallbackModelId: null,
-    });
-    await reload();
-  };
-
   return (
     <ThreePaneLayout left={<SettingsNav />}>
       <div className="settings-page">
@@ -714,7 +820,6 @@ export function AiSettingsPage() {
               provider={provider}
               isSummaryProvider={summaryBinding?.providerProfileId === provider.id}
               onEdit={() => setForm(formFromProvider(provider))}
-              onUse={() => assignToSummary(provider)}
               onReload={reload}
             />
           ))}
@@ -726,6 +831,12 @@ export function AiSettingsPage() {
             </div>
           )}
         </section>
+        <SummaryBindingSection
+          key={`${summaryBinding?.providerProfileId ?? "none"}:${summaryBinding?.modelId ?? ""}`}
+          providers={providers}
+          binding={summaryBinding}
+          onSaved={reload}
+        />
         <TranscriptionBindingSection
           key={`${transcriptionBinding?.providerProfileId ?? "local"}:${transcriptionBinding?.modelId ?? ""}`}
           providers={providers}

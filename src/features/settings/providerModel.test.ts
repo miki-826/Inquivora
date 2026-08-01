@@ -98,9 +98,31 @@ describe("プロバイダープリセット", () => {
       const preset = PROVIDER_PRESETS[type];
       expect(preset.baseUrl.length).toBeGreaterThan(0);
       expect(preset.models).toContain(preset.defaultModel);
+      expect(preset.summaryModels.map((model) => model.id)).toContain(
+        preset.defaultSummaryModel,
+      );
       expect(preset.transcriptionModels).toContain(preset.defaultTranscriptionModel);
       expect(providerTypeLabel(type)).toBe(preset.label);
     }
+  });
+
+  it("議事録候補は構造化出力対応を確認したモデルだけを持つ", () => {
+    expect(PROVIDER_PRESETS.openai.summaryModels.map((model) => model.id)).toEqual([
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna",
+      "gpt-5.4",
+      "gpt-5.4-mini",
+      "gpt-5-mini",
+      "gpt-4.1",
+      "gpt-4o",
+      "gpt-4o-mini",
+    ]);
+    expect(PROVIDER_PRESETS.gemini.summaryModels.map((model) => model.id)).toEqual([
+      "gemini-3.6-flash",
+      "gemini-3.5-flash",
+      "gemini-3.5-flash-lite",
+    ]);
   });
 
   it("OpenAI文字起こしは音声対応モデルを既定にする", () => {

@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { RefreshCw, Search } from "lucide-react";
+import { CalendarDays, FileText, ListChecks, Mic2, RefreshCw, Search } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
@@ -22,6 +22,20 @@ function messageOf(error: unknown): string {
     return String((error as { message: unknown }).message);
   }
   return String(error);
+}
+
+function SearchResultIcon({ type }: { type: string }) {
+  const props = { size: 16, strokeWidth: 1.8, "aria-hidden": true } as const;
+  switch (type) {
+    case "meeting":
+      return <Mic2 {...props} />;
+    case "task":
+      return <ListChecks {...props} />;
+    case "event":
+      return <CalendarDays {...props} />;
+    default:
+      return <FileText {...props} />;
+  }
 }
 
 export function SearchPage() {
@@ -199,14 +213,20 @@ export function SearchPage() {
               className="search-result"
               onClick={() => void openResult(result)}
             >
-              <div className="search-result__head">
-                <span className={`search-result__type search-result__type--${result.entityType}`}>
-                  {entityTypeLabel(result.entityType)}
+              <span
+                className={`search-result__icon search-result__icon--${result.entityType}`}
+                title={entityTypeLabel(result.entityType)}
+              >
+                <SearchResultIcon type={result.entityType} />
+              </span>
+              <span className="search-result__content">
+                <span className="search-result__head">
+                  <span className="search-result__title">{result.title}</span>
+                  <span className="search-result__kind">{entityTypeLabel(result.entityType)}</span>
                 </span>
-                <span className="search-result__title">{result.title}</span>
-              </div>
-              {result.snippet && <p className="search-result__snippet">{result.snippet}</p>}
-              {result.path && <p className="search-result__path">{result.path}</p>}
+                {result.path && <span className="search-result__path">{result.path}</span>}
+                {result.snippet && <span className="search-result__snippet">{result.snippet}</span>}
+              </span>
             </button>
           ))}
         </div>
