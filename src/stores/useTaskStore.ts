@@ -47,6 +47,18 @@ function optimisticTask(task: Task, patch: TaskPatch): Task {
   };
 }
 
+export function duplicateTaskInput(source: Task): TaskInput {
+  return {
+    title: `${source.title}（コピー）`,
+    description: source.description,
+    priority: source.priority,
+    color: source.color,
+    assignee: source.assignee,
+    projectName: source.projectName,
+    linkedFilePath: source.linkedFilePath,
+  };
+}
+
 export const useTaskStore = create<TaskState>((set, get) => ({
   tasks: [],
   allTasks: [],
@@ -185,15 +197,6 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     const source =
       get().allTasks.find((t) => t.id === id) ?? get().tasks.find((t) => t.id === id);
     if (!source) return;
-    await get().createTask({
-      title: `${source.title}（コピー）`,
-      description: source.description,
-      dueAtUtc: source.dueAtUtc,
-      priority: source.priority,
-      color: source.color,
-      assignee: source.assignee,
-      projectName: source.projectName,
-      linkedFilePath: source.linkedFilePath,
-    });
+    await get().createTask(duplicateTaskInput(source));
   },
 }));

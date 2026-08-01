@@ -88,6 +88,13 @@ export function addOrActivateTab(
   return { tabs: [...tabs, newTab], activeTabId: newTab.id };
 }
 
+export function shouldActivateFileFromTree(
+  tabs: EditorTab[],
+  activeTabId: string | null,
+): boolean {
+  return !tabs.find((tab) => tab.id === activeTabId)?.isPinned;
+}
+
 /// ドラッグ元タブ(fromId)をドロップ先タブ(toId)の位置へ移動した配列を返す。
 export function reorderTabs(tabs: EditorTab[], fromId: string, toId: string): EditorTab[] {
   const fromIndex = tabs.findIndex((t) => t.id === fromId);

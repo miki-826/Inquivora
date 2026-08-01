@@ -7,6 +7,7 @@ import {
   closeTab as closeTabModel,
   languageForExtension,
   reorderTabs,
+  shouldActivateFileFromTree,
   SPLIT_RATIO_DEFAULT,
   viewTypeForFile,
   type EditorPane,
@@ -223,7 +224,10 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         await useWorkspaceStore.getState().openExternal(entry.relativePath);
         return;
       }
-      await get().openPath(absolute);
+      const { tabs, activeTabId } = get();
+      await get().openPath(absolute, {
+        activate: shouldActivateFileFromTree(tabs, activeTabId),
+      });
     },
 
     openPath: async (absolutePath, options = {}) => {

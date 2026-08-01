@@ -15,6 +15,7 @@ import {
   type EntityType,
   type SearchResult,
 } from "./searchModel";
+import { useRetainedSearchStore } from "./searchState";
 
 function messageOf(error: unknown): string {
   if (error && typeof error === "object" && "message" in error) {
@@ -30,10 +31,14 @@ export function SearchPage() {
   const selectTask = useTaskStore((s) => s.select);
   const focusEvent = useCalendarStore((s) => s.setFocusEventId);
 
-  const [query, setQuery] = useState("");
-  const [selectedTypes, setSelectedTypes] = useState<EntityType[]>([]);
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [searched, setSearched] = useState(false);
+  const query = useRetainedSearchStore((s) => s.query);
+  const selectedTypes = useRetainedSearchStore((s) => s.selectedTypes);
+  const results = useRetainedSearchStore((s) => s.results);
+  const searched = useRetainedSearchStore((s) => s.searched);
+  const setQuery = useRetainedSearchStore((s) => s.setQuery);
+  const setSelectedTypes = useRetainedSearchStore((s) => s.setSelectedTypes);
+  const setResults = useRetainedSearchStore((s) => s.setResults);
+  const setSearched = useRetainedSearchStore((s) => s.setSearched);
   const [busy, setBusy] = useState(false);
   const [indexing, setIndexing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,7 +90,7 @@ export function SearchPage() {
     } finally {
       if (requestId === requestIdRef.current) setBusy(false);
     }
-  }, [query, selectedTypes]);
+  }, [query, selectedTypes, setResults, setSearched]);
 
   const rebuildIndex = async () => {
     setIndexing(true);
@@ -104,8 +109,10 @@ export function SearchPage() {
   }, [runSearch]);
 
   const toggleType = (type: EntityType) => {
-    setSelectedTypes((prev) =>
-      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type],
+    setSelectedTypes(
+      selectedTypes.includes(type)
+        ? selectedTypes.filter((selected) => selected !== type)
+        : [...selectedTypes, type],
     );
   };
 

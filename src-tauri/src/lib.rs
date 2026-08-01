@@ -37,6 +37,9 @@ pub fn run() {
             if let Err(err) = database::jobs::requeue_interrupted_jobs(&conn) {
                 eprintln!("中断ジョブの復旧に失敗: {}", err.message);
             }
+            if let Err(err) = database::meetings::complete_interrupted_meetings(&conn) {
+                eprintln!("中断された会議の終了処理に失敗: {}", err.message);
+            }
             app.manage(DbState(Mutex::new(conn)));
             app.manage(commands::workspace::WorkspaceState::default());
             tray::setup_tray(app.handle())?;

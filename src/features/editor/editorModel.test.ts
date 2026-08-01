@@ -7,6 +7,7 @@ import {
   isPreviewableLanguage,
   languageForExtension,
   reorderTabs,
+  shouldActivateFileFromTree,
   SPLIT_RATIO_DEFAULT,
   SPLIT_RATIO_MAX,
   SPLIT_RATIO_MIN,
@@ -128,6 +129,19 @@ describe("addOrActivateTab", () => {
     const result = addOrActivateTab(existing, "2", tab("3", "a.md"));
     expect(result.tabs).toHaveLength(2);
     expect(result.activeTabId).toBe("1");
+  });
+});
+
+describe("shouldActivateFileFromTree", () => {
+  it("ピン留め中はファイルツリーで開いたタブへ表示を切り替えない", () => {
+    const pinned = { ...tab("1", "pinned.md"), isPinned: true };
+    expect(shouldActivateFileFromTree([pinned], pinned.id)).toBe(false);
+  });
+
+  it("通常タブまたは未選択なら開いたタブへ表示を切り替える", () => {
+    const normal = tab("1", "normal.md");
+    expect(shouldActivateFileFromTree([normal], normal.id)).toBe(true);
+    expect(shouldActivateFileFromTree([normal], null)).toBe(true);
   });
 });
 

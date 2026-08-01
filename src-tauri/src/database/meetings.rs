@@ -178,6 +178,18 @@ pub fn end_meeting(conn: &Connection, id: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+/// 新しいアプリプロセスには前回の録音セッションを引き継げないため、
+/// DBに残った録音中・一時停止中の会議を終了済みにする。
+pub fn complete_interrupted_meetings(conn: &Connection) -> Result<usize, AppError> {
+    let now = Utc::now().to_rfc3339();
+    Ok(conn.execute(
+        "UPDATE meetings
+         SET status = 'completed', ended_at = ?1, updated_at = ?1
+         WHERE status IN ('recording', 'paused')",
+        [&now],
+    )?)
+}
+
 pub fn delete_meeting(conn: &Connection, id: &str) -> Result<(), AppError> {
     let affected = conn.execute("DELETE FROM meetings WHERE id = ?1", [id])?;
     if affected == 0 {
@@ -368,6 +380,23 @@ mod tests {
         let fetched = get_meeting(&conn, &meeting.id).unwrap();
         assert_eq!(fetched.status, MeetingStatus::Completed);
         assert!(fetched.ended_at.is_some());
+    }
+
+    #[test]
+    fn 再起動時は中断された会議を終了済みにする() {
+        let (_dir, conn) = open_temp_db();
+        let recording = create_meeting(&conn, sample_input("録音中")).unwrap();
+        let paused = create_meeting(&conn, sample_input("一時停止中")).unwrap();
+        set_meeting_status(&conn, &paused.id, MeetingStatus::Paused).unwrap();
+        let completed = create_meeting(&conn, sample_input("終了済み")).unwrap();
+        end_meeting(&conn, &completed.id).unwrap();
+
+        assert_eq!(complete_interrupted_meetings(&conn).unwrap(), 2);
+        for id in [&recording.id, &paused.id, &completed.id] {
+            let meeting = get_meeting(&conn, id).unwrap();
+            assert_eq!(meeting.status, MeetingStatus::Completed);
+            assert!(meeting.ended_at.is_some());
+        }
     }
 
     #[test]
