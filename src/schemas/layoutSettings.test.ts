@@ -9,6 +9,11 @@ describe("parseLayoutSettings", () => {
       lastScreen: "/tasks",
       navigationPosition: "top" as const,
       taskListFontSize: "large" as const,
+      uiDensity: "compact" as const,
+      showStatusBar: false,
+      reduceMotion: true,
+      editorFontSize: "large" as const,
+      editorWordWrap: false,
     };
     expect(parseLayoutSettings(value)).toEqual(value);
   });
@@ -26,7 +31,19 @@ describe("parseLayoutSettings", () => {
       lastScreen: "/tasks",
       navigationPosition: "side",
       taskListFontSize: "small",
+      uiDensity: "comfortable",
+      showStatusBar: true,
+      reduceMotion: false,
+      editorFontSize: "medium",
+      editorWordWrap: true,
     });
+  });
+
+  it("右側・下部のナビゲーション配置を保存できる", () => {
+    expect(parseLayoutSettings({ navigationPosition: "right" }).navigationPosition).toBe("right");
+    expect(parseLayoutSettings({ navigationPosition: "bottom" }).navigationPosition).toBe(
+      "bottom",
+    );
   });
 
   it("nullや不正値は既定値を返す", () => {

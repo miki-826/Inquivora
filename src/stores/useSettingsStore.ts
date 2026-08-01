@@ -5,8 +5,10 @@ import {
   parseLayoutSettings,
   SIDEBAR_WIDTH_MAX,
   SIDEBAR_WIDTH_MIN,
+  type EditorFontSize,
   type NavigationPosition,
   type TaskListFontSize,
+  type UiDensity,
 } from "../schemas/layoutSettings";
 import { loadSetting, saveSetting } from "../services/settings";
 
@@ -21,6 +23,11 @@ type SettingsState = {
   lastScreen: string;
   navigationPosition: NavigationPosition;
   taskListFontSize: TaskListFontSize;
+  uiDensity: UiDensity;
+  showStatusBar: boolean;
+  reduceMotion: boolean;
+  editorFontSize: EditorFontSize;
+  editorWordWrap: boolean;
   hydrated: boolean;
   hydrate: () => Promise<void>;
   setLeftSidebarWidth: (width: number) => void;
@@ -28,6 +35,11 @@ type SettingsState = {
   setLastScreen: (path: string) => void;
   setNavigationPosition: (position: NavigationPosition) => void;
   setTaskListFontSize: (size: TaskListFontSize) => void;
+  setUiDensity: (density: UiDensity) => void;
+  setShowStatusBar: (show: boolean) => void;
+  setReduceMotion: (reduce: boolean) => void;
+  setEditorFontSize: (size: EditorFontSize) => void;
+  setEditorWordWrap: (enabled: boolean) => void;
 };
 
 let persistTimer: ReturnType<typeof setTimeout> | undefined;
@@ -35,13 +47,29 @@ let persistTimer: ReturnType<typeof setTimeout> | undefined;
 function schedulePersist(get: () => SettingsState) {
   clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
-    const { leftSidebarWidth, rightSidebarWidth, lastScreen, navigationPosition, taskListFontSize } = get();
+    const {
+      leftSidebarWidth,
+      rightSidebarWidth,
+      lastScreen,
+      navigationPosition,
+      taskListFontSize,
+      uiDensity,
+      showStatusBar,
+      reduceMotion,
+      editorFontSize,
+      editorWordWrap,
+    } = get();
     saveSetting(LAYOUT_SETTING_KEY, {
       leftSidebarWidth,
       rightSidebarWidth,
       lastScreen,
       navigationPosition,
       taskListFontSize,
+      uiDensity,
+      showStatusBar,
+      reduceMotion,
+      editorFontSize,
+      editorWordWrap,
     }).catch((error) => console.error("レイアウト設定の保存に失敗しました", error));
   }, PERSIST_DEBOUNCE_MS);
 }
@@ -76,6 +104,26 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
   setTaskListFontSize: (taskListFontSize) => {
     set({ taskListFontSize });
+    schedulePersist(get);
+  },
+  setUiDensity: (uiDensity) => {
+    set({ uiDensity });
+    schedulePersist(get);
+  },
+  setShowStatusBar: (showStatusBar) => {
+    set({ showStatusBar });
+    schedulePersist(get);
+  },
+  setReduceMotion: (reduceMotion) => {
+    set({ reduceMotion });
+    schedulePersist(get);
+  },
+  setEditorFontSize: (editorFontSize) => {
+    set({ editorFontSize });
+    schedulePersist(get);
+  },
+  setEditorWordWrap: (editorWordWrap) => {
+    set({ editorWordWrap });
     schedulePersist(get);
   },
 }));

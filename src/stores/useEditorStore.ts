@@ -3,6 +3,7 @@ import { create } from "zustand";
 import {
   addOrActivateTab,
   assignTabToPane,
+  canActivateEditorTab,
   clampSplitRatio,
   closeTab as closeTabModel,
   languageForExtension,
@@ -58,6 +59,7 @@ type EditorStore = {
   conflict: ConflictState | null;
   openFile: (entry: TreeEntry) => Promise<void>;
   openPath: (absolutePath: string, options?: OpenPathOptions) => Promise<void>;
+  openPathInSplit: (absolutePath: string) => Promise<void>;
   activateTab: (tabId: string) => void;
   openInSplit: (tabId: string) => void;
   dropTabIntoPane: (tabId: string, pane: EditorPane) => void;
@@ -231,12 +233,16 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     },
 
     openPath: async (absolutePath, options = {}) => {
-      const existing = get().tabs.find((t) => t.path === absolutePath);
-        if (existing) {
-          if (options.activate !== false) {
-            set({ activeTabId: existing.id });
-          }
-          return;
+      const initial = get();
+      const activate =
+        options.activate !== false &&
+        shouldActivateFileFromTree(initial.tabs, initial.activeTabId);
+      const existing = initial.tabs.find((t) => t.path === absolutePath);
+      if (existing) {
+        if (activate) {
+          set({ activeTabId: existing.id });
+        }
+        return;
       }
       const extension = extensionOf(absolutePath);
       const detected = await ws.detectType(absolutePath).catch(() => null);
@@ -289,7 +295,7 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         const next = addOrActivateTab(state.tabs, state.activeTabId, tab);
         return {
           tabs: next.tabs,
-          activeTabId: options.activate === false ? state.activeTabId : next.activeTabId,
+          activeTabId: activate ? next.activeTabId : state.activeTabId,
           // HTMLは開いた時点で見たままの表示を出す
           previewVisible:
             tab.language === "html"
@@ -300,8 +306,23 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       schedulePersistTabs();
     },
 
+    openPathInSplit: async (absolutePath) => {
+      await get().openPath(absolutePath, { activate: false });
+      const state = get();
+      const tab = state.tabs.find((candidate) => candidate.path === absolutePath);
+      if (!tab) return;
+      if (!state.activeTabId) {
+        set({ activeTabId: tab.id });
+        return;
+      }
+      get().dropTabIntoPane(tab.id, "secondary");
+    },
+
     activateTab: (tabId) => {
       set((state) => {
+        if (!canActivateEditorTab(state.tabs, state.activeTabId, tabId)) {
+          return state;
+        }
         if (state.secondaryTabId === tabId && state.activeTabId !== tabId) {
           return { activeTabId: tabId, secondaryTabId: state.activeTabId };
         }

@@ -40,6 +40,9 @@ pub fn run() {
             if let Err(err) = database::meetings::complete_interrupted_meetings(&conn) {
                 eprintln!("中断された会議の終了処理に失敗: {}", err.message);
             }
+            if let Err(err) = database::providers::migrate_gemini_transcription_models(&conn) {
+                eprintln!("Gemini文字起こしモデルの移行に失敗: {}", err.message);
+            }
             app.manage(DbState(Mutex::new(conn)));
             app.manage(commands::workspace::WorkspaceState::default());
             tray::setup_tray(app.handle())?;

@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspaceStore } from "../../stores/useWorkspaceStore";
+import { EDITOR_FILE_DRAG_TYPE } from "../editor/editorModel";
 import { TreeContextMenu, type MenuState } from "./TreeContextMenu";
 import { flattenTree, type TreeEntry, type TreeRow } from "./treeModel";
 
@@ -277,7 +278,10 @@ export function FileTree({ onOpenFile }: FileTreeProps) {
                   draggable
                   onDragStart={(e) => {
                     e.dataTransfer.setData("text/inquivora-path", entry.relativePath);
-                    e.dataTransfer.effectAllowed = "move";
+                    if (!entry.isFolder && entry.category !== "external") {
+                      e.dataTransfer.setData(EDITOR_FILE_DRAG_TYPE, entry.relativePath);
+                    }
+                    e.dataTransfer.effectAllowed = "copyMove";
                     setDraggingPath(entry.relativePath);
                   }}
                   onDragEnd={() => setDraggingPath(null)}

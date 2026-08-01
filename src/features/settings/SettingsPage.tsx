@@ -175,6 +175,16 @@ function AppearanceSettingsSection() {
   const setNavigationPosition = useSettingsStore((s) => s.setNavigationPosition);
   const taskListFontSize = useSettingsStore((s) => s.taskListFontSize);
   const setTaskListFontSize = useSettingsStore((s) => s.setTaskListFontSize);
+  const uiDensity = useSettingsStore((s) => s.uiDensity);
+  const setUiDensity = useSettingsStore((s) => s.setUiDensity);
+  const showStatusBar = useSettingsStore((s) => s.showStatusBar);
+  const setShowStatusBar = useSettingsStore((s) => s.setShowStatusBar);
+  const reduceMotion = useSettingsStore((s) => s.reduceMotion);
+  const setReduceMotion = useSettingsStore((s) => s.setReduceMotion);
+  const editorFontSize = useSettingsStore((s) => s.editorFontSize);
+  const setEditorFontSize = useSettingsStore((s) => s.setEditorFontSize);
+  const editorWordWrap = useSettingsStore((s) => s.editorWordWrap);
+  const setEditorWordWrap = useSettingsStore((s) => s.setEditorWordWrap);
 
   return (
     <section className="settings-section">
@@ -214,8 +224,84 @@ function AppearanceSettingsSection() {
           >
             上部
           </button>
+          <button
+            type="button"
+            className={`theme-option${navigationPosition === "right" ? " theme-option--on" : ""}`}
+            onClick={() => setNavigationPosition("right")}
+          >
+            右側
+          </button>
+          <button
+            type="button"
+            className={`theme-option${navigationPosition === "bottom" ? " theme-option--on" : ""}`}
+            onClick={() => setNavigationPosition("bottom")}
+          >
+            下部
+          </button>
         </div>
       </div>
+      <div className="settings-field">
+        画面の情報量
+        <div className="theme-options" role="group" aria-label="画面の情報量">
+          <button
+            type="button"
+            className={`theme-option${uiDensity === "comfortable" ? " theme-option--on" : ""}`}
+            onClick={() => setUiDensity("comfortable")}
+          >
+            標準
+          </button>
+          <button
+            type="button"
+            className={`theme-option${uiDensity === "compact" ? " theme-option--on" : ""}`}
+            onClick={() => setUiDensity("compact")}
+          >
+            コンパクト
+          </button>
+        </div>
+      </div>
+      <div className="settings-field">
+        エディタの文字サイズ
+        <div className="theme-options" role="group" aria-label="エディタの文字サイズ">
+          {[
+            ["small", "小（13px）"],
+            ["medium", "中（14px）"],
+            ["large", "大（16px）"],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              className={`theme-option${editorFontSize === value ? " theme-option--on" : ""}`}
+              onClick={() => setEditorFontSize(value as "small" | "medium" | "large")}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <label className="settings-field settings-field--toggle">
+        <input
+          type="checkbox"
+          checked={editorWordWrap}
+          onChange={(event) => setEditorWordWrap(event.target.checked)}
+        />
+        エディタで長い行を折り返す
+      </label>
+      <label className="settings-field settings-field--toggle">
+        <input
+          type="checkbox"
+          checked={showStatusBar}
+          onChange={(event) => setShowStatusBar(event.target.checked)}
+        />
+        下部のステータスバーを表示する
+      </label>
+      <label className="settings-field settings-field--toggle">
+        <input
+          type="checkbox"
+          checked={reduceMotion}
+          onChange={(event) => setReduceMotion(event.target.checked)}
+        />
+        画面のアニメーションを減らす
+      </label>
       <div className="settings-field">
         カレンダーのタスク文字サイズ
         <div className="theme-options" role="group" aria-label="カレンダーのタスク文字サイズ">

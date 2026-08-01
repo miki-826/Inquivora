@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   addOrActivateTab,
   assignTabToPane,
+  canActivateEditorTab,
   clampSplitRatio,
   closeTab,
   isPreviewableLanguage,
@@ -142,6 +143,21 @@ describe("shouldActivateFileFromTree", () => {
     const normal = tab("1", "normal.md");
     expect(shouldActivateFileFromTree([normal], normal.id)).toBe(true);
     expect(shouldActivateFileFromTree([normal], null)).toBe(true);
+  });
+});
+
+describe("canActivateEditorTab", () => {
+  it("ピン留め中は別の上部タブにも切り替えない", () => {
+    const pinned = { ...tab("1", "pinned.md"), isPinned: true };
+    const other = tab("2", "other.md");
+    expect(canActivateEditorTab([pinned, other], pinned.id, other.id)).toBe(false);
+    expect(canActivateEditorTab([pinned, other], pinned.id, pinned.id)).toBe(true);
+  });
+
+  it("ピン留めしていなければ別タブへ切り替えられる", () => {
+    const current = tab("1", "current.md");
+    const other = tab("2", "other.md");
+    expect(canActivateEditorTab([current, other], current.id, other.id)).toBe(true);
   });
 });
 

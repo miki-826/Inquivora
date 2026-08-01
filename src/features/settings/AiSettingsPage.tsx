@@ -22,6 +22,7 @@ import {
   type Provider,
   type ProviderType,
 } from "./providerModel";
+import { formatApiUsageTime } from "./usageTime";
 import { SettingsNav } from "./SettingsNav";
 
 const SUMMARY_FEATURE_KEY = "meeting.summary";
@@ -634,7 +635,7 @@ function UsageSection() {
       <div className="usage-list">
         {logs.map((log) => (
           <div key={log.id} className="usage-list__row">
-            <span>{log.createdAt.slice(0, 16).replace("T", " ")}</span>
+            <span>{formatApiUsageTime(log.createdAt)}</span>
             <span>{log.modelId}</span>
             <span>{log.status === "success" ? "成功" : `失敗 (${log.errorCode ?? "?"})`}</span>
             {log.audioDurationMs != null && <span>{Math.round(log.audioDurationMs / 1000)}秒</span>}

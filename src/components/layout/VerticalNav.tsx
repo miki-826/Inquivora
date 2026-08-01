@@ -10,7 +10,11 @@ function preloadProps(path: string) {
   };
 }
 
-export function VerticalNav({ placement = "side" }: { placement?: "side" | "top" }) {
+export function VerticalNav({
+  placement = "side",
+}: {
+  placement?: "side" | "top" | "right" | "bottom";
+}) {
   const mainItems = NAV_ITEMS.filter((item) => item.id !== "settings");
   const settingsItem = NAV_ITEMS.find((item) => item.id === "settings");
   return (

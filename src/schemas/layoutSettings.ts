@@ -16,8 +16,10 @@ export const SCREEN_PATHS = [
   "/settings",
 ] as const;
 
-export type NavigationPosition = "side" | "top";
+export type NavigationPosition = "side" | "top" | "right" | "bottom";
 export type TaskListFontSize = "small" | "medium" | "large";
+export type UiDensity = "comfortable" | "compact";
+export type EditorFontSize = "small" | "medium" | "large";
 
 export type LayoutSettings = {
   leftSidebarWidth: number;
@@ -25,6 +27,11 @@ export type LayoutSettings = {
   lastScreen: string;
   navigationPosition: NavigationPosition;
   taskListFontSize: TaskListFontSize;
+  uiDensity: UiDensity;
+  showStatusBar: boolean;
+  reduceMotion: boolean;
+  editorFontSize: EditorFontSize;
+  editorWordWrap: boolean;
 };
 
 export const DEFAULT_LAYOUT_SETTINGS: LayoutSettings = {
@@ -33,14 +40,24 @@ export const DEFAULT_LAYOUT_SETTINGS: LayoutSettings = {
   lastScreen: "/workspace",
   navigationPosition: "side",
   taskListFontSize: "small",
+  uiDensity: "comfortable",
+  showStatusBar: true,
+  reduceMotion: false,
+  editorFontSize: "medium",
+  editorWordWrap: true,
 };
 
 const layoutSettingsSchema = z.object({
   leftSidebarWidth: z.number().optional(),
   rightSidebarWidth: z.number().optional(),
   lastScreen: z.string().optional(),
-  navigationPosition: z.enum(["side", "top"]).optional(),
+  navigationPosition: z.enum(["side", "top", "right", "bottom"]).optional(),
   taskListFontSize: z.enum(["small", "medium", "large"]).optional(),
+  uiDensity: z.enum(["comfortable", "compact"]).optional(),
+  showStatusBar: z.boolean().optional(),
+  reduceMotion: z.boolean().optional(),
+  editorFontSize: z.enum(["small", "medium", "large"]).optional(),
+  editorWordWrap: z.boolean().optional(),
 });
 
 export function parseLayoutSettings(value: unknown): LayoutSettings {
@@ -61,5 +78,10 @@ export function parseLayoutSettings(value: unknown): LayoutSettings {
     navigationPosition:
       result.data.navigationPosition ?? DEFAULT_LAYOUT_SETTINGS.navigationPosition,
     taskListFontSize: result.data.taskListFontSize ?? DEFAULT_LAYOUT_SETTINGS.taskListFontSize,
+    uiDensity: result.data.uiDensity ?? DEFAULT_LAYOUT_SETTINGS.uiDensity,
+    showStatusBar: result.data.showStatusBar ?? DEFAULT_LAYOUT_SETTINGS.showStatusBar,
+    reduceMotion: result.data.reduceMotion ?? DEFAULT_LAYOUT_SETTINGS.reduceMotion,
+    editorFontSize: result.data.editorFontSize ?? DEFAULT_LAYOUT_SETTINGS.editorFontSize,
+    editorWordWrap: result.data.editorWordWrap ?? DEFAULT_LAYOUT_SETTINGS.editorWordWrap,
   };
 }

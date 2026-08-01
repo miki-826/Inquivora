@@ -116,10 +116,11 @@ describe("プロバイダープリセット", () => {
   });
 
   it("Geminiの既定モデルは現行の2.5系", () => {
-    expect(PROVIDER_PRESETS.gemini.defaultModel).toBe("gemini-2.5-flash");
-    expect(PROVIDER_PRESETS.gemini.models.every((model) => model.startsWith("gemini-2.5-"))).toBe(
+    expect(PROVIDER_PRESETS.gemini.defaultModel).toBe("gemini-3.6-flash");
+    expect(PROVIDER_PRESETS.gemini.models.every((model) => model.startsWith("gemini-3."))).toBe(
       true,
     );
+    expect(PROVIDER_PRESETS.gemini.defaultTranscriptionModel).toBe("gemini-3.6-flash");
   });
 
   it("isProviderTypeは廃止したClaude/Ollamaを受理しない", () => {

@@ -4,9 +4,10 @@ import { Columns2, Eye, EyeOff, Pin, PinOff, X } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { PanePlaceholder } from "../../components/common/PanePlaceholder";
 import { useEditorStore } from "../../stores/useEditorStore";
+import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useWorkspaceStore } from "../../stores/useWorkspaceStore";
 import type { EditorPane, EditorTab } from "./editorModel";
-import { isPreviewableLanguage } from "./editorModel";
+import { EDITOR_FILE_DRAG_TYPE, isPreviewableLanguage } from "./editorModel";
 import { watchFindWidgetTooltips } from "./findWidgetTooltips";
 import { HtmlPreview } from "./HtmlPreview";
 import { MarkdownPreview } from "./MarkdownPreview";
@@ -237,6 +238,9 @@ function ActivePane({
   secondary?: boolean;
   style?: CSSProperties;
 }) {
+  const editorFontSize = useSettingsStore((s) => s.editorFontSize);
+  const editorWordWrap = useSettingsStore((s) => s.editorWordWrap);
+  const fontSize = editorFontSize === "small" ? 13 : editorFontSize === "large" ? 16 : 14;
   const tabs = useEditorStore((s) => s.tabs);
   const contents = useEditorStore((s) => s.contents);
   const readModes = useEditorStore((s) => s.readModes);
@@ -321,11 +325,11 @@ function ActivePane({
             }}
             options={{
               readOnly: readMode !== "normal",
-              wordWrap: "on",
+              wordWrap: editorWordWrap ? "on" : "off",
               minimap: { enabled: false },
               automaticLayout: true,
               renderWhitespace: "none",
-              fontSize: 14,
+              fontSize,
               mouseWheelZoom: true,
               scrollbar: {
                 vertical: "hidden",
@@ -438,6 +442,7 @@ export function EditorArea() {
     (s) => s.tabs.filter((t) => t.viewType === "editor" || t.viewType === "markdown-preview").length,
   );
   const [tabDragging, setTabDragging] = useState(false);
+  const [fileDragging, setFileDragging] = useState(false);
   const [dropHover, setDropHover] = useState(false);
 
   useEffect(() => {
@@ -470,11 +475,19 @@ export function EditorArea() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const canSplit = tabDragging && !secondaryTabId && splittableCount >= 2;
+  const canSplit =
+    !secondaryTabId &&
+    ((tabDragging && splittableCount >= 2) || (fileDragging && Boolean(activeTabId)));
   const canRearrange = tabDragging && Boolean(secondaryTabId);
   const endDrag = () => {
     setTabDragging(false);
+    setFileDragging(false);
     setDropHover(false);
+  };
+
+  const openDraggedFileInSplit = (relativePath: string) => {
+    const absolutePath = useWorkspaceStore.getState().absolutePath(relativePath);
+    void useEditorStore.getState().openPathInSplit(absolutePath);
   };
 
   return (
@@ -482,6 +495,18 @@ export function EditorArea() {
       className="editor-area"
       onDragStart={(e) => {
         if (e.dataTransfer.types.includes("text/inquivora-tab")) setTabDragging(true);
+      }}
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes(EDITOR_FILE_DRAG_TYPE)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+        if (!fileDragging) setFileDragging(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+          setFileDragging(false);
+          setDropHover(false);
+        }
       }}
       onDragEnd={endDrag}
     >
@@ -502,23 +527,30 @@ export function EditorArea() {
           <div
             className={`editor-split-dropzone${dropHover ? " editor-split-dropzone--hover" : ""}`}
             onDragOver={(e) => {
-              if (!e.dataTransfer.types.includes("text/inquivora-tab")) return;
+              const isTab = e.dataTransfer.types.includes("text/inquivora-tab");
+              const isFile = e.dataTransfer.types.includes(EDITOR_FILE_DRAG_TYPE);
+              if (!isTab && !isFile) return;
               e.preventDefault();
-              e.dataTransfer.dropEffect = "move";
+              e.dataTransfer.dropEffect = isFile ? "copy" : "move";
               if (!dropHover) setDropHover(true);
             }}
             onDragLeave={() => setDropHover(false)}
             onDrop={(e) => {
               const tabId = e.dataTransfer.getData("text/inquivora-tab");
+              const relativePath = e.dataTransfer.getData(EDITOR_FILE_DRAG_TYPE);
               e.preventDefault();
-              setTabDragging(false);
-              setDropHover(false);
-              if (tabId) useEditorStore.getState().openInSplit(tabId);
+              e.stopPropagation();
+              endDrag();
+              if (tabId) {
+                useEditorStore.getState().openInSplit(tabId);
+              } else if (relativePath) {
+                openDraggedFileInSplit(relativePath);
+              }
             }}
           >
             <span className="editor-split-dropzone__hint">
               <Columns2 size={18} aria-hidden />
-              ここにドロップで右側に分割表示
+              ここにファイルをドロップして右側に分割表示
             </span>
           </div>
         )}

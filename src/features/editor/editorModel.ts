@@ -95,6 +95,15 @@ export function shouldActivateFileFromTree(
   return !tabs.find((tab) => tab.id === activeTabId)?.isPinned;
 }
 
+export function canActivateEditorTab(
+  tabs: EditorTab[],
+  activeTabId: string | null,
+  targetTabId: string,
+): boolean {
+  if (activeTabId === targetTabId) return true;
+  return !tabs.find((tab) => tab.id === activeTabId)?.isPinned;
+}
+
 /// ドラッグ元タブ(fromId)をドロップ先タブ(toId)の位置へ移動した配列を返す。
 export function reorderTabs(tabs: EditorTab[], fromId: string, toId: string): EditorTab[] {
   const fromIndex = tabs.findIndex((t) => t.id === fromId);
@@ -109,6 +118,7 @@ export function reorderTabs(tabs: EditorTab[], fromId: string, toId: string): Ed
 }
 
 export type EditorPane = "primary" | "secondary";
+export const EDITOR_FILE_DRAG_TYPE = "text/inquivora-editor-file";
 
 export type PaneAssignment = {
   activeTabId: string | null;

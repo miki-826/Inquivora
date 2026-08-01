@@ -39,10 +39,10 @@ export const PROVIDER_PRESETS: Record<ProviderType, ProviderPreset> = {
     authType: "x-goog-api-key",
     needsApiKey: true,
     editableBaseUrl: false,
-    models: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"],
-    defaultModel: "gemini-2.5-flash",
-    transcriptionModels: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"],
-    defaultTranscriptionModel: "gemini-2.5-flash",
+    models: ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"],
+    defaultModel: "gemini-3.6-flash",
+    transcriptionModels: ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"],
+    defaultTranscriptionModel: "gemini-3.6-flash",
   },
 };
 

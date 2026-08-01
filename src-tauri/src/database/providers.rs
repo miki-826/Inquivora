@@ -376,6 +376,41 @@ pub fn get_binding(conn: &Connection, feature_key: &str) -> Result<Option<Featur
         .optional()?)
 }
 
+/// Googleの現行推奨モデルへ、既存のGemini文字起こし設定だけを移行する。
+/// ユーザーが他機能で明示選択したモデルは変更しない。
+pub fn migrate_gemini_transcription_models(conn: &Connection) -> Result<usize, AppError> {
+    let now = Utc::now().to_rfc3339();
+    let primary = conn.execute(
+        "UPDATE ai_feature_bindings
+         SET model_id = CASE model_id
+             WHEN 'gemini-2.5-flash' THEN 'gemini-3.6-flash'
+             WHEN 'gemini-2.5-flash-lite' THEN 'gemini-3.5-flash-lite'
+             ELSE model_id END,
+             updated_at = ?1
+         WHERE feature_key = 'transcription.batch'
+           AND model_id IN ('gemini-2.5-flash', 'gemini-2.5-flash-lite')
+           AND provider_profile_id IN (
+             SELECT id FROM api_provider_profiles WHERE provider_type = 'gemini'
+           )",
+        [&now],
+    )?;
+    let fallback = conn.execute(
+        "UPDATE ai_feature_bindings
+         SET fallback_model_id = CASE fallback_model_id
+             WHEN 'gemini-2.5-flash' THEN 'gemini-3.6-flash'
+             WHEN 'gemini-2.5-flash-lite' THEN 'gemini-3.5-flash-lite'
+             ELSE fallback_model_id END,
+             updated_at = ?1
+         WHERE feature_key = 'transcription.batch'
+           AND fallback_model_id IN ('gemini-2.5-flash', 'gemini-2.5-flash-lite')
+           AND fallback_provider_profile_id IN (
+             SELECT id FROM api_provider_profiles WHERE provider_type = 'gemini'
+           )",
+        [&now],
+    )?;
+    Ok(primary + fallback)
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageInput {
@@ -732,6 +767,35 @@ mod tests {
         delete_provider(&conn, &provider.id).unwrap();
         let binding = get_binding(&conn, "transcription.batch").unwrap().unwrap();
         assert!(binding.provider_profile_id.is_none());
+    }
+
+    #[test]
+    fn gemini文字起こしの旧モデルを現行モデルへ移行する() {
+        let (_dir, conn) = open_temp_db();
+        let mut input = sample_input("Gemini");
+        input.provider_type = "gemini".to_string();
+        input.base_url = "https://generativelanguage.googleapis.com/v1beta".to_string();
+        input.auth_type = "x-goog-api-key".to_string();
+        let provider = create_provider(&conn, input).unwrap();
+        set_binding(
+            &conn,
+            "transcription.batch",
+            BindingInput {
+                provider_profile_id: Some(provider.id.clone()),
+                model_id: Some("gemini-2.5-flash".to_string()),
+                fallback_provider_profile_id: Some(provider.id.clone()),
+                fallback_model_id: Some("gemini-2.5-flash-lite".to_string()),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(migrate_gemini_transcription_models(&conn).unwrap(), 2);
+        let binding = get_binding(&conn, "transcription.batch").unwrap().unwrap();
+        assert_eq!(binding.model_id.as_deref(), Some("gemini-3.6-flash"));
+        assert_eq!(
+            binding.fallback_model_id.as_deref(),
+            Some("gemini-3.5-flash-lite")
+        );
     }
 
     #[test]

@@ -24,7 +24,7 @@ pub fn runtime_from_profile(
     let timeout_ms = profile.timeout_ms.max(1000) as u64;
     ProviderRuntime {
         provider_type: profile.provider_type.clone(),
-        base_url: profile.base_url.clone(),
+        base_url: canonical_provider_base_url(&profile.provider_type, &profile.base_url),
         auth_type: profile.auth_type.clone(),
         secret,
         default_headers: profile.default_headers.clone(),
@@ -33,6 +33,25 @@ pub fn runtime_from_profile(
         timeout_ms,
         capabilities: profile.capabilities.clone(),
     }
+}
+
+fn canonical_provider_base_url(provider_type: &str, base_url: &str) -> String {
+    if provider_type != "gemini" {
+        return base_url.to_string();
+    }
+    let trimmed = base_url.trim().trim_end_matches('/');
+    let Ok(mut parsed) = reqwest::Url::parse(trimmed) else {
+        return trimmed.to_string();
+    };
+    if parsed
+        .host_str()
+        .is_some_and(|host| host.eq_ignore_ascii_case("generativelanguage.googleapis.com"))
+        && (parsed.path().is_empty() || parsed.path() == "/")
+    {
+        parsed.set_path("/v1beta");
+        return parsed.to_string().trim_end_matches('/').to_string();
+    }
+    base_url.to_string()
 }
 
 #[derive(Debug, Clone)]
@@ -900,6 +919,28 @@ mod tests {
             result.user_message.as_deref().unwrap_or("").contains("API key not valid"),
             "{:?}",
             result.user_message,
+        );
+    }
+
+    #[test]
+    fn gemini公式hostだけの保存値にはv1betaを補う() {
+        assert_eq!(
+            canonical_provider_base_url(
+                "gemini",
+                "https://generativelanguage.googleapis.com/"
+            ),
+            "https://generativelanguage.googleapis.com/v1beta"
+        );
+        assert_eq!(
+            canonical_provider_base_url(
+                "gemini",
+                "https://generativelanguage.googleapis.com/v1beta"
+            ),
+            "https://generativelanguage.googleapis.com/v1beta"
+        );
+        assert_eq!(
+            canonical_provider_base_url("openai", "https://example.test/custom/"),
+            "https://example.test/custom/"
         );
     }
 }
