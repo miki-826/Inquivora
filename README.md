@@ -7,7 +7,7 @@
 [![CI](https://github.com/miki-826/Inquivora/actions/workflows/ci.yml/badge.svg)](https://github.com/miki-826/Inquivora/actions/workflows/ci.yml)
 [![Windows Release](https://github.com/miki-826/Inquivora/actions/workflows/release-windows.yml/badge.svg)](https://github.com/miki-826/Inquivora/actions/workflows/release-windows.yml)
 
-[Windows 版をダウンロード](https://github.com/miki-826/Inquivora/releases/tag/v0.1.0-alpha.42) · [リリース一覧](https://github.com/miki-826/Inquivora/releases) · [実装仕様](docs/Inquivora_実装仕様書.md)
+[Windows 版をダウンロード](https://github.com/miki-826/Inquivora/releases/tag/v0.1.0-alpha.43) · [リリース一覧](https://github.com/miki-826/Inquivora/releases) · [実装仕様](docs/Inquivora_実装仕様書.md)
 
 ## 名前に込めた意味
 
@@ -47,7 +47,7 @@
 - 管理者権限は不要
 - インストール先: `%LOCALAPPDATA%\Inquivora`
 
-1. [v0.1.0-alpha.42 の Release](https://github.com/miki-826/Inquivora/releases/tag/v0.1.0-alpha.42) から `Inquivora_0.1.0-alpha.42_x64-setup.exe` をダウンロードします。
+1. [v0.1.0-alpha.43 の Release](https://github.com/miki-826/Inquivora/releases/tag/v0.1.0-alpha.43) から `Inquivora_0.1.0-alpha.43_x64-setup.exe` をダウンロードします。
 2. 必要に応じて、同じページの `SHA256SUMS.txt` でファイルを検証します。
 3. インストーラーを実行します。コードサイニング証明書を付けていないため SmartScreen が表示される場合は、内容を確認して［詳細情報］→［実行］を選びます。
 

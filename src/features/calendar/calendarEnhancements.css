@@ -77,19 +77,26 @@
   font-size: 16px;
 }
 
-.calendar-page--item-font-small .fc-event-title,
-.calendar-page--item-font-small .fc-event-time {
-  font-size: 10px;
+.calendar-page--item-font-small {
+  --calendar-item-font-size: 10px;
 }
 
-.calendar-page--item-font-medium .fc-event-title,
-.calendar-page--item-font-medium .fc-event-time {
-  font-size: 12px;
+.calendar-page--item-font-medium {
+  --calendar-item-font-size: 12px;
 }
 
-.calendar-page--item-font-large .fc-event-title,
-.calendar-page--item-font-large .fc-event-time {
-  font-size: 15px;
+.calendar-page--item-font-large {
+  --calendar-item-font-size: 15px;
+}
+
+/* FullCalendar本体の表示別セレクターより詳細度を上げ、予定とタスクへ同じ設定値を反映する。 */
+.calendar-page.calendar-page--item-font-small .fc .fc-event-title,
+.calendar-page.calendar-page--item-font-small .fc .fc-event-time,
+.calendar-page.calendar-page--item-font-medium .fc .fc-event-title,
+.calendar-page.calendar-page--item-font-medium .fc .fc-event-time,
+.calendar-page.calendar-page--item-font-large .fc .fc-event-title,
+.calendar-page.calendar-page--item-font-large .fc .fc-event-time {
+  font-size: var(--calendar-item-font-size);
 }
 
 .calendar-task-editor {

@@ -239,8 +239,13 @@ function EventForm({
         </div>
       )}
       <div className="event-form__actions">
-        <button type="submit" className="event-form__submit" disabled={!draft.title.trim()}>
-          {submitLabel}
+        <button
+          type="submit"
+          className="event-form__submit button-primary"
+          disabled={!draft.title.trim()}
+          aria-label={submitLabel}
+        >
+          <span className="event-form__submit-label">{submitLabel}</span>
         </button>
         <button type="button" onClick={onCancel}>
           キャンセル
