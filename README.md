@@ -9,6 +9,15 @@
 
 [Windows 版をダウンロード](https://github.com/miki-826/Inquivora/releases/tag/v0.1.0-alpha.41) · [リリース一覧](https://github.com/miki-826/Inquivora/releases) · [実装仕様](docs/Inquivora_実装仕様書.md)
 
+## 名前に込めた意味
+
+**Inquivora（インキボラ）**は、「すべてを取り込み、ひとつにつなぐ」というコンセプトから生まれた造語です。
+
+- **Inqui-**: Inquiry / Inquire（問い、情報を探る）
+- **-vora**: ラテン語由来の「食べる・取り込むもの」
+
+会議音声、文字起こし、メモ、タスクなどを取り込み、1 つの情報基盤へ統合するアプリという意味を込めています。
+
 ## 特長
 
 - **ローカルファースト** — メモ、タスク、予定、議事録、録音は PC 内に保存します。
