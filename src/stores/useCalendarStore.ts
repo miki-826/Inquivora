@@ -3,7 +3,12 @@ import type { EventRecord } from "../features/calendar/calendarModel";
 import type { Task } from "../features/tasks/taskModel";
 import * as eventService from "../services/events";
 import type { EventInput, EventPatch } from "../services/events";
-import { listTasks, updateTask as saveTask, type TaskPatch } from "../services/tasks";
+import {
+  deleteTask,
+  listTasks,
+  updateTask as saveTask,
+  type TaskPatch,
+} from "../services/tasks";
 
 type CalendarState = {
   events: EventRecord[];
@@ -19,6 +24,7 @@ type CalendarState = {
   updateEvent: (id: string, patch: EventPatch) => Promise<boolean>;
   removeEvent: (id: string) => Promise<void>;
   updateTask: (id: string, patch: TaskPatch) => Promise<boolean>;
+  removeTask: (id: string) => Promise<void>;
   scheduleTask: (id: string, dueAtUtc: string) => Promise<boolean>;
   setFocusEventId: (id: string | null) => void;
 };
@@ -137,6 +143,17 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     } catch (err) {
       set({ tasks: snapshot, error: errorMessage(err) });
       return false;
+    }
+  },
+
+  removeTask: async (id) => {
+    const snapshot = get().tasks;
+    set({ tasks: snapshot.filter((task) => task.id !== id) });
+    try {
+      await deleteTask(id);
+      set({ error: null });
+    } catch (err) {
+      set({ tasks: snapshot, error: errorMessage(err) });
     }
   },
 

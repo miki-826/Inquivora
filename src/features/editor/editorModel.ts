@@ -125,6 +125,29 @@ export type PaneAssignment = {
   secondaryTabId: string | null;
 };
 
+/** 分割前の表示と指定タブを、希望した左右の位置で新しい2ペインへ割り当てる。 */
+export function startSplitWithTab(
+  tabs: EditorTab[],
+  activeTabId: string | null,
+  tabId: string,
+  pane: EditorPane,
+): PaneAssignment {
+  const splittableIds = tabs
+    .filter((tab) => tab.viewType === "editor" || tab.viewType === "markdown-preview")
+    .map((tab) => tab.id);
+  if (!splittableIds.includes(tabId) || splittableIds.length < 2) {
+    return { activeTabId, secondaryTabId: null };
+  }
+  const otherTabId =
+    activeTabId && activeTabId !== tabId && splittableIds.includes(activeTabId)
+      ? activeTabId
+      : splittableIds.find((id) => id !== tabId) ?? null;
+  if (!otherTabId) return { activeTabId, secondaryTabId: null };
+  return pane === "primary"
+    ? { activeTabId: tabId, secondaryTabId: otherTabId }
+    : { activeTabId: otherTabId, secondaryTabId: tabId };
+}
+
 /// タブをドロップ先のペインへ割り当てる。既に反対側で開いていれば左右を入れ替える
 /// （VS Codeと同じく、分割中はどちらのペインへもドラッグで移せるようにするため）。
 export function assignTabToPane(

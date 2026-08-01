@@ -9,6 +9,7 @@ import {
   languageForExtension,
   reorderTabs,
   shouldActivateFileFromTree,
+  startSplitWithTab,
   SPLIT_RATIO_DEFAULT,
   SPLIT_RATIO_MAX,
   SPLIT_RATIO_MIN,
@@ -234,5 +235,30 @@ describe("assignTabToPane", () => {
   it("分割していないときに左のタブを右へドロップしても分割しない", () => {
     const single = { activeTabId: "1", secondaryTabId: null };
     expect(assignTabToPane(single, "1", "secondary")).toEqual(single);
+  });
+});
+
+describe("startSplitWithTab", () => {
+  const tabs = [tab("1", "a.md"), tab("2", "b.md"), tab("3", "c.md")];
+
+  it("新しいタブを左へ置き、元の表示を右へ残す", () => {
+    expect(startSplitWithTab(tabs, "1", "3", "primary")).toEqual({
+      activeTabId: "3",
+      secondaryTabId: "1",
+    });
+  });
+
+  it("新しいタブを右へ置き、元の表示を左へ残す", () => {
+    expect(startSplitWithTab(tabs, "1", "3", "secondary")).toEqual({
+      activeTabId: "1",
+      secondaryTabId: "3",
+    });
+  });
+
+  it("現在のタブ自身でも別タブを反対側へ選んで分割する", () => {
+    expect(startSplitWithTab(tabs, "1", "1", "secondary")).toEqual({
+      activeTabId: "2",
+      secondaryTabId: "1",
+    });
   });
 });

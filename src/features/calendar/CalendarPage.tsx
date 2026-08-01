@@ -1,17 +1,22 @@
 import type { DateSelectArg, EventApi, EventClickArg } from "@fullcalendar/core";
 import jaLocale from "@fullcalendar/core/locales/ja";
 import dayGridPlugin from "@fullcalendar/daygrid";
-import interactionPlugin, { Draggable, type EventReceiveArg } from "@fullcalendar/interaction";
+import interactionPlugin, {
+  Draggable,
+  type EventDragStopArg,
+  type EventReceiveArg,
+} from "@fullcalendar/interaction";
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
-import { useEffect, useRef, useState } from "react";
+import { Trash2 } from "lucide-react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
 import { getEvent, type EventPatch } from "../../services/events";
 import { useCalendarStore } from "../../stores/useCalendarStore";
 import { useSettingsStore } from "../../stores/useSettingsStore";
 import { TASK_COLOR_VALUES, TOKYO_TZ, type Task } from "../tasks/taskModel";
-import { buildCalendarInputs, shiftDateString } from "./calendarModel";
+import { buildCalendarInputs, isPointInsideBounds, shiftDateString } from "./calendarModel";
 import { EventPanel, type CalendarSelection, type EventDraft } from "./EventPanel";
 import "./calendarEnhancements.css";
 import "../tasks/taskColors.css";
@@ -53,9 +58,13 @@ type EventChangeArg = { event: EventApi; revert: () => void };
 function UnscheduledTasks({
   tasks,
   fontSize,
+  trashRef,
+  dragActive,
 }: {
   tasks: Task[];
   fontSize: "small" | "medium" | "large";
+  trashRef: RefObject<HTMLDivElement | null>;
+  dragActive: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const unscheduled = tasks.filter(
@@ -106,6 +115,14 @@ function UnscheduledTasks({
           ))}
         </div>
       )}
+      <div
+        ref={trashRef}
+        className={`calendar-trash${dragActive ? " calendar-trash--active" : ""}`}
+        aria-label="予定またはタスクをここへドロップして削除"
+      >
+        <Trash2 size={17} aria-hidden />
+        <span>ここへドロップして削除</span>
+      </div>
     </div>
   );
 }
@@ -117,12 +134,16 @@ export function CalendarPage() {
   const loadRange = useCalendarStore((s) => s.loadRange);
   const updateEvent = useCalendarStore((s) => s.updateEvent);
   const scheduleTask = useCalendarStore((s) => s.scheduleTask);
+  const removeEvent = useCalendarStore((s) => s.removeEvent);
+  const removeTask = useCalendarStore((s) => s.removeTask);
   const focusEventId = useCalendarStore((s) => s.focusEventId);
   const setFocusEventId = useCalendarStore((s) => s.setFocusEventId);
   const taskListFontSize = useSettingsStore((s) => s.taskListFontSize);
   const [selection, setSelection] = useState<CalendarSelection>(null);
   const calendarRef = useRef<FullCalendar | null>(null);
   const calendarContainerRef = useRef<HTMLDivElement | null>(null);
+  const trashRef = useRef<HTMLDivElement | null>(null);
+  const [calendarItemDragging, setCalendarItemDragging] = useState(false);
 
   useEffect(() => {
     const container = calendarContainerRef.current;
@@ -208,9 +229,39 @@ export function CalendarPage() {
     if (!ok) info.revert();
   };
 
+  const handleEventDragStop = (info: EventDragStopArg) => {
+    setCalendarItemDragging(false);
+    const trash = trashRef.current;
+    if (!trash) return;
+    const rect = trash.getBoundingClientRect();
+    const { clientX, clientY } = info.jsEvent;
+    if (!isPointInsideBounds(clientX, clientY, rect)) {
+      return;
+    }
+    const { kind, sourceId } = info.event.extendedProps as {
+      kind?: "event" | "task";
+      sourceId?: string;
+    };
+    if (!kind || !sourceId) return;
+    const label = kind === "task" ? "タスク" : "予定";
+    if (!window.confirm(`${label}「${info.event.title.replace(/^(予定|タスク) · /, "")}」を削除しますか？`)) {
+      return;
+    }
+    if (selection?.type === kind && selection.id === sourceId) setSelection(null);
+    if (kind === "task") void removeTask(sourceId);
+    else void removeEvent(sourceId);
+  };
+
   return (
     <ThreePaneLayout
-      left={<UnscheduledTasks tasks={tasks} fontSize={taskListFontSize} />}
+      left={
+        <UnscheduledTasks
+          tasks={tasks}
+          fontSize={taskListFontSize}
+          trashRef={trashRef}
+          dragActive={calendarItemDragging}
+        />
+      }
       right={<EventPanel selection={selection} onClose={() => setSelection(null)} />}
       leftLabel="タスク設定"
       rightLabel="予定詳細"
@@ -253,6 +304,8 @@ export function CalendarPage() {
           eventDrop={(info) => void applyEventChange(info)}
           eventResize={(info) => void applyEventChange(info)}
           eventReceive={(info) => void handleEventReceive(info)}
+          eventDragStart={() => setCalendarItemDragging(true)}
+          eventDragStop={handleEventDragStop}
         />
       </div>
     </ThreePaneLayout>

@@ -1,7 +1,9 @@
 .calendar-unscheduled {
+  display: flex;
+  flex-direction: column;
   height: 100%;
   padding: 14px 12px;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .calendar-unscheduled__hint,
@@ -14,7 +16,39 @@
 
 .calendar-unscheduled__list {
   display: grid;
+  flex: 1;
+  min-height: 0;
   gap: 7px;
+  align-content: start;
+  grid-auto-rows: max-content;
+  overflow-y: auto;
+}
+
+.calendar-trash {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 48px;
+  margin-top: auto;
+  padding: 10px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: var(--color-surface-subtle);
+  font-size: 12px;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.calendar-trash--active {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
+}
+
+.calendar-trash--active:hover {
+  background: color-mix(in srgb, var(--color-danger) 16%, var(--color-surface));
 }
 
 .calendar-unscheduled__item {

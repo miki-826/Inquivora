@@ -5,6 +5,7 @@ import {
   buildRecurringEventInputs,
   eventToCalendarInput,
   formatEventRange,
+  isPointInsideBounds,
   taskToCalendarInput,
   type EventRecord,
 } from "./calendarModel";
@@ -138,6 +139,20 @@ describe("buildRecurringEventInputs", () => {
 
   it("繰り返しなしは入力を1件だけ返す", () => {
     expect(buildRecurringEventInputs(base, "none", 99)).toEqual([base]);
+  });
+});
+
+describe("isPointInsideBounds", () => {
+  const bounds = { left: 10, right: 110, top: 20, bottom: 70 };
+
+  it("境界内と境界上の座標を受け入れる", () => {
+    expect(isPointInsideBounds(40, 50, bounds)).toBe(true);
+    expect(isPointInsideBounds(10, 20, bounds)).toBe(true);
+  });
+
+  it("境界外の座標を拒否する", () => {
+    expect(isPointInsideBounds(9, 50, bounds)).toBe(false);
+    expect(isPointInsideBounds(40, 71, bounds)).toBe(false);
   });
 });
 

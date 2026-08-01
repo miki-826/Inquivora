@@ -397,10 +397,12 @@ function PaneDropZone({
   pane,
   label,
   onDropped,
+  creatingSplit,
 }: {
   pane: EditorPane;
   label: string;
   onDropped: () => void;
+  creatingSplit: boolean;
 }) {
   const [hover, setHover] = useState(false);
 
@@ -410,18 +412,27 @@ function PaneDropZone({
         hover ? " editor-pane-dropzone--hover" : ""
       }`}
       onDragOver={(e) => {
-        if (!e.dataTransfer.types.includes("text/inquivora-tab")) return;
+        const isTab = e.dataTransfer.types.includes("text/inquivora-tab");
+        const isFile = e.dataTransfer.types.includes(EDITOR_FILE_DRAG_TYPE);
+        if (!isTab && !isFile) return;
         e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
+        e.dataTransfer.dropEffect = isFile ? "copy" : "move";
         if (!hover) setHover(true);
       }}
       onDragLeave={() => setHover(false)}
       onDrop={(e) => {
         const tabId = e.dataTransfer.getData("text/inquivora-tab");
+        const relativePath = e.dataTransfer.getData(EDITOR_FILE_DRAG_TYPE);
         e.preventDefault();
         setHover(false);
         onDropped();
-        if (tabId) useEditorStore.getState().dropTabIntoPane(tabId, pane);
+        if (tabId) {
+          if (creatingSplit) useEditorStore.getState().openInSplit(tabId, pane);
+          else useEditorStore.getState().dropTabIntoPane(tabId, pane);
+        } else if (relativePath) {
+          const absolutePath = useWorkspaceStore.getState().absolutePath(relativePath);
+          void useEditorStore.getState().openPathInPane(absolutePath, pane);
+        }
       }}
     >
       <span className="editor-pane-dropzone__hint">
@@ -441,9 +452,15 @@ export function EditorArea() {
   const splittableCount = useEditorStore(
     (s) => s.tabs.filter((t) => t.viewType === "editor" || t.viewType === "markdown-preview").length,
   );
+  const activeIsSplittable = useEditorStore((s) =>
+    s.tabs.some(
+      (tab) =>
+        tab.id === s.activeTabId &&
+        (tab.viewType === "editor" || tab.viewType === "markdown-preview"),
+    ),
+  );
   const [tabDragging, setTabDragging] = useState(false);
   const [fileDragging, setFileDragging] = useState(false);
-  const [dropHover, setDropHover] = useState(false);
 
   useEffect(() => {
     useEditorStore.getState().closeAllTabs();
@@ -477,17 +494,11 @@ export function EditorArea() {
 
   const canSplit =
     !secondaryTabId &&
-    ((tabDragging && splittableCount >= 2) || (fileDragging && Boolean(activeTabId)));
-  const canRearrange = tabDragging && Boolean(secondaryTabId);
+    ((tabDragging && splittableCount >= 2) || (fileDragging && activeIsSplittable));
+  const canRearrange = Boolean(secondaryTabId) && (tabDragging || fileDragging);
   const endDrag = () => {
     setTabDragging(false);
     setFileDragging(false);
-    setDropHover(false);
-  };
-
-  const openDraggedFileInSplit = (relativePath: string) => {
-    const absolutePath = useWorkspaceStore.getState().absolutePath(relativePath);
-    void useEditorStore.getState().openPathInSplit(absolutePath);
   };
 
   return (
@@ -505,7 +516,6 @@ export function EditorArea() {
       onDragLeave={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
           setFileDragging(false);
-          setDropHover(false);
         }
       }}
       onDragEnd={endDrag}
@@ -523,41 +533,20 @@ export function EditorArea() {
         {secondaryTabId && (
           <ActivePane tabId={secondaryTabId} secondary style={{ flex: "1 1 0%" }} />
         )}
-        {canSplit && (
-          <div
-            className={`editor-split-dropzone${dropHover ? " editor-split-dropzone--hover" : ""}`}
-            onDragOver={(e) => {
-              const isTab = e.dataTransfer.types.includes("text/inquivora-tab");
-              const isFile = e.dataTransfer.types.includes(EDITOR_FILE_DRAG_TYPE);
-              if (!isTab && !isFile) return;
-              e.preventDefault();
-              e.dataTransfer.dropEffect = isFile ? "copy" : "move";
-              if (!dropHover) setDropHover(true);
-            }}
-            onDragLeave={() => setDropHover(false)}
-            onDrop={(e) => {
-              const tabId = e.dataTransfer.getData("text/inquivora-tab");
-              const relativePath = e.dataTransfer.getData(EDITOR_FILE_DRAG_TYPE);
-              e.preventDefault();
-              e.stopPropagation();
-              endDrag();
-              if (tabId) {
-                useEditorStore.getState().openInSplit(tabId);
-              } else if (relativePath) {
-                openDraggedFileInSplit(relativePath);
-              }
-            }}
-          >
-            <span className="editor-split-dropzone__hint">
-              <Columns2 size={18} aria-hidden />
-              ここにファイルをドロップして右側に分割表示
-            </span>
-          </div>
-        )}
-        {canRearrange && (
+        {(canSplit || canRearrange) && (
           <>
-            <PaneDropZone pane="primary" label="左に表示" onDropped={endDrag} />
-            <PaneDropZone pane="secondary" label="右に表示" onDropped={endDrag} />
+            <PaneDropZone
+              pane="primary"
+              label="左に表示"
+              creatingSplit={canSplit}
+              onDropped={endDrag}
+            />
+            <PaneDropZone
+              pane="secondary"
+              label="右に表示"
+              creatingSplit={canSplit}
+              onDropped={endDrag}
+            />
           </>
         )}
       </div>

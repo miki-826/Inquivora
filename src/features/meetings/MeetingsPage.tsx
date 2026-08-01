@@ -570,6 +570,7 @@ function playSegmentChunk(path: string) {
 
 /// 確定済みセグメントは変化しないため、新規追加時に既存項目を再描画しないようメモ化する。
 const SegmentItem = memo(function SegmentItem({ segment }: { segment: TranscriptSegment }) {
+  const [copied, setCopied] = useState(false);
   return (
     <li
       className={`meeting-segment meeting-segment--${segment.source === "mic" ? "mic" : "loopback"}`}
@@ -585,17 +586,33 @@ const SegmentItem = memo(function SegmentItem({ segment }: { segment: Transcript
         </span>
         <span className="meeting-segment__speaker">{segment.speakerLabel}</span>
         <span className="meeting-segment__time">{segmentTimeLabel(segment)}</span>
-        {segment.audioChunkPath && (
+        <span className="meeting-segment__actions">
+          {segment.audioChunkPath && (
+            <button
+              type="button"
+              className="meeting-segment__play"
+              aria-label="この発言の音声を再生"
+              title="この発言を再生"
+              onClick={() => playSegmentChunk(segment.audioChunkPath!)}
+            >
+              ▶
+            </button>
+          )}
           <button
             type="button"
-            className="meeting-segment__play"
-            aria-label="この発言の音声を再生"
-            title="この発言を再生"
-            onClick={() => playSegmentChunk(segment.audioChunkPath!)}
+            className="meeting-segment__copy"
+            aria-label="この発言の文章をコピー"
+            title="文章をコピー"
+            onClick={() => {
+              void copyText(segment.text).then(() => {
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1600);
+              });
+            }}
           >
-            ▶
+            {copied ? <Check size={12} aria-hidden /> : <Clipboard size={12} aria-hidden />}
           </button>
-        )}
+        </span>
       </div>
       <p className="meeting-segment__text">{segment.text}</p>
     </li>

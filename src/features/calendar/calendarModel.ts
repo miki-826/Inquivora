@@ -44,6 +44,16 @@ export type CalendarInput = {
 
 export type EventRepeat = "none" | "daily" | "weekly";
 
+export type ScreenBounds = { left: number; right: number; top: number; bottom: number };
+
+export function isPointInsideBounds(
+  x: number,
+  y: number,
+  bounds: ScreenBounds,
+): boolean {
+  return x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom;
+}
+
 /** 1件の予定入力を日次・週次の独立した予定へ展開する。 */
 export function buildRecurringEventInputs(
   input: EventInput,

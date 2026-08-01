@@ -9,6 +9,7 @@ import {
   languageForExtension,
   reorderTabs,
   shouldActivateFileFromTree,
+  startSplitWithTab,
   SPLIT_RATIO_DEFAULT,
   viewTypeForFile,
   type EditorPane,
@@ -60,8 +61,9 @@ type EditorStore = {
   openFile: (entry: TreeEntry) => Promise<void>;
   openPath: (absolutePath: string, options?: OpenPathOptions) => Promise<void>;
   openPathInSplit: (absolutePath: string) => Promise<void>;
+  openPathInPane: (absolutePath: string, pane: EditorPane) => Promise<void>;
   activateTab: (tabId: string) => void;
-  openInSplit: (tabId: string) => void;
+  openInSplit: (tabId: string, pane?: EditorPane) => void;
   dropTabIntoPane: (tabId: string, pane: EditorPane) => void;
   closeSplit: () => void;
   setSplitRatio: (ratio: number) => void;
@@ -307,6 +309,10 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     },
 
     openPathInSplit: async (absolutePath) => {
+      await get().openPathInPane(absolutePath, "secondary");
+    },
+
+    openPathInPane: async (absolutePath, pane) => {
       await get().openPath(absolutePath, { activate: false });
       const state = get();
       const tab = state.tabs.find((candidate) => candidate.path === absolutePath);
@@ -315,7 +321,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         set({ activeTabId: tab.id });
         return;
       }
-      get().dropTabIntoPane(tab.id, "secondary");
+      if (state.secondaryTabId) {
+        get().dropTabIntoPane(tab.id, pane);
+      } else {
+        get().openInSplit(tab.id, pane);
+      }
     },
 
     activateTab: (tabId) => {
@@ -330,18 +340,16 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       });
     },
 
-    openInSplit: (tabId) => {
+    openInSplit: (tabId, pane = "secondary") => {
       set((state) => {
-        const splittableTabs = state.tabs.filter(
-          (tab) => tab.viewType === "editor" || tab.viewType === "markdown-preview",
-        );
-        if (splittableTabs.length < 2 || !splittableTabs.some((tab) => tab.id === tabId)) {
-          return state;
+        if (state.secondaryTabId) {
+          return assignTabToPane(
+            { activeTabId: state.activeTabId, secondaryTabId: state.secondaryTabId },
+            tabId,
+            pane,
+          );
         }
-        const otherTabId = state.secondaryTabId && state.secondaryTabId !== tabId
-          ? state.secondaryTabId
-          : splittableTabs.find((tab) => tab.id !== tabId)?.id ?? null;
-        return { activeTabId: otherTabId, secondaryTabId: tabId };
+        return startSplitWithTab(state.tabs, state.activeTabId, tabId, pane);
       });
     },
 

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
 import { reindexWorkspace, searchGlobal } from "../../services/search";
+import { revealInExplorer } from "../../services/workspace";
 import { useMeetingStore } from "../../stores/useMeetingStore";
 import { useTaskStore } from "../../stores/useTaskStore";
 import { useCalendarStore } from "../../stores/useCalendarStore";
@@ -38,6 +39,83 @@ function SearchResultIcon({ type }: { type: string }) {
   }
 }
 
+type SearchMenuState = { x: number; y: number; path: string };
+
+async function copyPath(path: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(path);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = path;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+}
+
+function SearchResultMenu({
+  menu,
+  onClose,
+  onError,
+}: {
+  menu: SearchMenuState;
+  onClose: () => void;
+  onError: (message: string) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const close = (event: MouseEvent) => {
+      if (!ref.current?.contains(event.target as Node)) onClose();
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("mousedown", close);
+    window.addEventListener("keydown", escape);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", escape);
+    };
+  }, [onClose]);
+  return (
+    <div
+      ref={ref}
+      className="context-menu"
+      role="menu"
+      style={{
+        left: Math.max(8, Math.min(menu.x, window.innerWidth - 220)),
+        top: Math.max(8, Math.min(menu.y, window.innerHeight - 90)),
+      }}
+    >
+      <button
+        type="button"
+        role="menuitem"
+        className="context-menu__item"
+        onClick={() => {
+          onClose();
+          void copyPath(menu.path).catch((error) => onError(messageOf(error)));
+        }}
+      >
+        ファイルパスをコピー
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        className="context-menu__item"
+        onClick={() => {
+          onClose();
+          void revealInExplorer(menu.path).catch((error) => onError(messageOf(error)));
+        }}
+      >
+        エクスプローラーで表示
+      </button>
+    </div>
+  );
+}
+
 export function SearchPage() {
   const navigate = useNavigate();
   const revealPath = useWorkspaceStore((s) => s.revealPath);
@@ -56,6 +134,7 @@ export function SearchPage() {
   const [busy, setBusy] = useState(false);
   const [indexing, setIndexing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [menu, setMenu] = useState<SearchMenuState | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const requestIdRef = useRef(0);
 
@@ -212,6 +291,11 @@ export function SearchPage() {
               type="button"
               className="search-result"
               onClick={() => void openResult(result)}
+              onContextMenu={(event) => {
+                if (!result.path) return;
+                event.preventDefault();
+                setMenu({ x: event.clientX, y: event.clientY, path: result.path });
+              }}
             >
               <span
                 className={`search-result__icon search-result__icon--${result.entityType}`}
@@ -230,6 +314,13 @@ export function SearchPage() {
             </button>
           ))}
         </div>
+        {menu && (
+          <SearchResultMenu
+            menu={menu}
+            onClose={() => setMenu(null)}
+            onError={setError}
+          />
+        )}
       </div>
     </ThreePaneLayout>
   );

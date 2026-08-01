@@ -934,7 +934,8 @@ input[type="radio"] {
   gap: 12px;
   padding: 16px;
   height: 100%;
-  overflow-y: auto;
+  min-height: 0;
+  overflow: hidden;
   text-align: left;
 }
 
@@ -1077,14 +1078,25 @@ input[type="radio"] {
   height: 34px;
 }
 
-.meeting-segment__play {
+.meeting-segment__actions {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.meeting-segment__play,
+.meeting-segment__copy {
   font-size: 11px;
   line-height: 1;
   padding: 3px 7px;
   border-radius: 999px;
   color: var(--color-primary);
   background: var(--color-primary-soft);
+}
+
+.meeting-segment__copy {
+  padding: 4px 6px;
 }
 
 .ws-meeting-panel {
@@ -1227,7 +1239,11 @@ input[type="radio"] {
   display: flex;
   flex-direction: column;
   gap: 0;
-  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--color-border, #eee);
   border-radius: var(--radius-md);
   background: var(--color-surface, #fff);
