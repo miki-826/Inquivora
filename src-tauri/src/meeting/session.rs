@@ -19,6 +19,8 @@ pub struct StartOptions {
     pub mic_device_id: Option<String>,
     pub loopback_device_id: Option<String>,
     pub chunk_seconds: i64,
+    pub mic_gain: f64,
+    pub loopback_gain: f64,
 }
 
 fn device_id(enabled: bool, id: &Option<String>) -> Option<String> {
@@ -31,6 +33,8 @@ fn build_start_command(options: &StartOptions, output_dir: &str) -> serde_json::
         "micDeviceId": device_id(options.mic, &options.mic_device_id),
         "loopbackDeviceId": device_id(options.loopback, &options.loopback_device_id),
         "chunkSeconds": options.chunk_seconds,
+        "micGain": options.mic_gain,
+        "loopbackGain": options.loopback_gain,
         "outputDir": output_dir,
     })
 }
@@ -206,6 +210,8 @@ mod tests {
             mic_device_id: None,
             loopback_device_id: None,
             chunk_seconds: 20,
+            mic_gain: 1.5,
+            loopback_gain: 1.0,
         }
     }
 
@@ -215,6 +221,8 @@ mod tests {
         assert_eq!(command["micDeviceId"], "default");
         assert_eq!(command["loopbackDeviceId"], "default");
         assert_eq!(command["chunkSeconds"], 20);
+        assert_eq!(command["micGain"], 1.5);
+        assert_eq!(command["loopbackGain"], 1.0);
         assert_eq!(command["outputDir"], "C:/audio");
     }
 

@@ -7,7 +7,9 @@ public sealed record AudioCommand(
     string? MicDeviceId,
     string? LoopbackDeviceId,
     int ChunkSeconds,
-    string? OutputDir);
+    string? OutputDir,
+    double MicGain,
+    double LoopbackGain);
 
 /// <summary>
 /// §9.7 Sidecar音声プロトコル。stdinコマンドとstdoutイベントのNDJSON。
@@ -27,7 +29,9 @@ public static class AudioProtocol
         string? MicDeviceId,
         string? LoopbackDeviceId,
         int? ChunkSeconds,
-        string? OutputDir);
+        string? OutputDir,
+        double? MicGain,
+        double? LoopbackGain);
 
     public static AudioCommand Parse(string line)
     {
@@ -59,7 +63,13 @@ public static class AudioProtocol
             }
         }
         return new AudioCommand(
-            raw.Command, raw.MicDeviceId, raw.LoopbackDeviceId, raw.ChunkSeconds ?? 20, raw.OutputDir);
+            raw.Command,
+            raw.MicDeviceId,
+            raw.LoopbackDeviceId,
+            raw.ChunkSeconds ?? 20,
+            raw.OutputDir,
+            Math.Clamp(raw.MicGain ?? 1.5, 0.5, 4.0),
+            Math.Clamp(raw.LoopbackGain ?? 1.0, 0.5, 4.0));
     }
 
     private static string Serialize(object value) =>

@@ -66,6 +66,10 @@ pub struct MeetingStartInput {
     pub loopback_device_id: Option<String>,
     #[serde(default)]
     pub chunk_seconds: Option<i64>,
+    #[serde(default)]
+    pub mic_gain: Option<f64>,
+    #[serde(default)]
+    pub loopback_gain: Option<f64>,
 }
 
 /// 文字起こしが可能か（ローカルWhisperモデル導入済み、またはAPI設定済み）を返す。
@@ -133,6 +137,8 @@ pub async fn meeting_start(app: AppHandle, input: MeetingStartInput) -> Result<M
             mic_device_id: input.mic_device_id.clone(),
             loopback_device_id: input.loopback_device_id.clone(),
             chunk_seconds: input.chunk_seconds.unwrap_or(20).clamp(5, 60),
+            mic_gain: input.mic_gain.unwrap_or(1.5).clamp(0.5, 4.0),
+            loopback_gain: input.loopback_gain.unwrap_or(1.0).clamp(0.5, 4.0),
         },
     )
     .await?;

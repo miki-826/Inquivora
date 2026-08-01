@@ -29,10 +29,25 @@ import {
 
 const AUDIO_DEVICES_KEY = "audio.devices";
 
+function messageOf(error: unknown): string {
+  if (error && typeof error === "object" && "message" in error) {
+    return String((error as { message: unknown }).message);
+  }
+  return String(error);
+}
+
 type SavedDevices = {
   micDeviceId?: string;
   loopbackDeviceId?: string;
+  micGain?: number;
+  loopbackGain?: number;
 };
+
+function gainValue(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.min(4, Math.max(0.5, value))
+    : fallback;
+}
 
 function parseSavedDevices(value: unknown): SavedDevices {
   if (typeof value !== "object" || value === null) {
@@ -43,7 +58,36 @@ function parseSavedDevices(value: unknown): SavedDevices {
     micDeviceId: typeof record.micDeviceId === "string" ? record.micDeviceId : undefined,
     loopbackDeviceId:
       typeof record.loopbackDeviceId === "string" ? record.loopbackDeviceId : undefined,
+    micGain: gainValue(record.micGain, 1.5),
+    loopbackGain: gainValue(record.loopbackGain, 1.0),
   };
+}
+
+function SensitivitySlider({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="meeting-sensitivity">
+      <span>
+        {label}<strong>{Math.round(value * 100)}%</strong>
+      </span>
+      <input
+        type="range"
+        min="0.5"
+        max="4"
+        step="0.1"
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      <small>小さい音を拾わない場合は上げ、周囲の音を拾いすぎる場合は下げてください。</small>
+    </label>
+  );
 }
 
 function DeviceSelect({
@@ -143,15 +187,22 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
   const [loopbackDevices, setLoopbackDevices] = useState<AudioDevice[]>([]);
   const [micDeviceId, setMicDeviceId] = useState("default");
   const [loopbackDeviceId, setLoopbackDeviceId] = useState("default");
-  const [transcriptionReady, setTranscriptionReady] = useState(true);
+  const [micGain, setMicGain] = useState(1.5);
+  const [loopbackGain, setLoopbackGain] = useState(1.0);
+  const [transcriptionReady, setTranscriptionReady] = useState(false);
+  const [readinessChecked, setReadinessChecked] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [disclosure, setDisclosure] = useState<AiDisclosure | null>(null);
+  const [disclosureChecked, setDisclosureChecked] = useState(false);
   const [apiConsent, setApiConsent] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    void getAiDisclosure("transcription.batch").then(setDisclosure).catch(() => undefined);
+    void getAiDisclosure("transcription.batch")
+      .then(setDisclosure)
+      .catch((error) => setLocalError(`文字起こし方法を確認できません: ${messageOf(error)}`))
+      .finally(() => setDisclosureChecked(true));
   }, []);
 
   useEffect(() => {
@@ -188,7 +239,12 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
       .then((ready) => {
         if (!cancelled) setTranscriptionReady(ready);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancelled) setTranscriptionReady(false);
+      })
+      .finally(() => {
+        if (!cancelled) setReadinessChecked(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -210,6 +266,8 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
         setLoopbackDevices(devices.loopback);
         setMicDeviceId(pickDeviceId(saved.micDeviceId, devices.mic));
         setLoopbackDeviceId(pickDeviceId(saved.loopbackDeviceId, devices.loopback));
+        setMicGain(saved.micGain ?? 1.5);
+        setLoopbackGain(saved.loopbackGain ?? 1.0);
       } catch (err) {
         console.error("録音デバイス一覧の取得に失敗", err);
       }
@@ -241,7 +299,12 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
       return;
     }
     setLocalError(null);
-    void saveSetting(AUDIO_DEVICES_KEY, { micDeviceId, loopbackDeviceId }).catch((err) =>
+    void saveSetting(AUDIO_DEVICES_KEY, {
+      micDeviceId,
+      loopbackDeviceId,
+      micGain,
+      loopbackGain,
+    }).catch((err) =>
       console.error("録音デバイス設定の保存に失敗", err),
     );
     const ok = await start({
@@ -252,11 +315,28 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
       loopback,
       micDeviceId: micDeviceId === "default" ? undefined : micDeviceId,
       loopbackDeviceId: loopbackDeviceId === "default" ? undefined : loopbackDeviceId,
+      micGain,
+      loopbackGain,
     });
     if (ok) {
       onClose();
     }
   };
+
+  const startBlockers = [
+    !workspace ? "ワークスペースのフォルダが開かれていないため、議事録の保存先を作成できません。" : null,
+    !targetFilePath.trim() ? "議事録の保存先ファイルを指定してください。" : null,
+    !readinessChecked
+      ? "文字起こし設定を確認しています。"
+      : !transcriptionReady
+      ? "利用できる文字起こし方法がありません。Whisperモデルをダウンロードするか、OpenAI / Geminiを文字起こし用に設定してください。"
+      : null,
+    !disclosureChecked ? "文字起こしの送信先を確認しています。" : null,
+    !mic && !loopback ? "マイクまたはPC音声を1つ以上有効にしてください。" : null,
+    disclosure?.mode === "api" && !apiConsent
+      ? "外部APIへ録音音声を送信することへの同意が必要です。"
+      : null,
+  ].filter((reason): reason is string => reason !== null);
 
   return (
     <div
@@ -267,7 +347,7 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
     >
       <div ref={dialogRef} className="meeting-dialog" role="dialog" aria-modal="true" aria-label="会議を開始">
         <h2 className="meeting-dialog__title">会議を開始</h2>
-        {!transcriptionReady && (
+        {readinessChecked && !transcriptionReady && (
           <div className="meeting-setup-hint" role="alert">
             <p>
               文字起こしの準備ができていません。ローカルのWhisperモデルをダウンロードするか、
@@ -283,6 +363,16 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
             >
               文字起こしの設定を開く
             </button>
+          </div>
+        )}
+        {startBlockers.length > 0 && (
+          <div className="meeting-start-blockers" role="status" aria-live="polite">
+            <strong>現在は文字起こしを開始できません</strong>
+            <ul>
+              {startBlockers.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
           </div>
         )}
         <label className="settings-field">
@@ -332,6 +422,9 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
             onChange={setMicDeviceId}
           />
         )}
+        {mic && (
+          <SensitivitySlider label="マイクの文字起こし感度" value={micGain} onChange={setMicGain} />
+        )}
         <label className="settings-field settings-field--toggle">
           <input
             type="checkbox"
@@ -346,6 +439,13 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
             devices={loopbackDevices}
             value={loopbackDeviceId}
             onChange={setLoopbackDeviceId}
+          />
+        )}
+        {loopback && (
+          <SensitivitySlider
+            label="PC音声の文字起こし感度"
+            value={loopbackGain}
+            onChange={setLoopbackGain}
           />
         )}
         <div className="meeting-dialog__privacy">
@@ -383,7 +483,7 @@ function MeetingStartDialog({ onClose }: StartDialogProps) {
             type="button"
             className="meeting-dialog__start"
             onClick={() => void submit()}
-            disabled={busy || !workspace || !transcriptionReady || (disclosure?.mode === "api" && !apiConsent)}
+            disabled={busy || startBlockers.length > 0}
           >
             {busy ? "開始中…" : "録音を開始"}
           </button>

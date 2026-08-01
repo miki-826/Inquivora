@@ -22,6 +22,8 @@ export type MeetingStartInput = {
   micDeviceId?: string;
   loopbackDeviceId?: string;
   chunkSeconds?: number;
+  micGain?: number;
+  loopbackGain?: number;
 };
 
 export type AudioDevice = {

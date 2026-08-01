@@ -25,6 +25,7 @@ import {
 import { SettingsNav } from "./SettingsNav";
 
 const SUMMARY_FEATURE_KEY = "meeting.summary";
+const TRANSCRIPTION_FEATURE_KEY = "transcription.batch";
 
 function messageOf(error: unknown): string {
   if (error && typeof error === "object" && "message" in error) {
@@ -359,6 +360,115 @@ function ProviderCard({
   );
 }
 
+function TranscriptionBindingSection({
+  providers,
+  binding,
+  onSaved,
+}: {
+  providers: Provider[];
+  binding: FeatureBinding | null;
+  onSaved: () => Promise<void>;
+}) {
+  const [providerId, setProviderId] = useState(binding?.providerProfileId ?? "local");
+  const [modelId, setModelId] = useState(binding?.modelId ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const available = providers.filter(
+    (provider) =>
+      provider.enabled &&
+      provider.capabilities.includes(TRANSCRIPTION_FEATURE_KEY) &&
+      isProviderType(provider.providerType),
+  );
+  const selected = available.find((provider) => provider.id === providerId) ?? null;
+  const selectedType = selected && isProviderType(selected.providerType) ? selected.providerType : null;
+  const preset = selectedType ? PROVIDER_PRESETS[selectedType] : null;
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      if (providerId === "local") {
+        await api.setFeatureBinding(TRANSCRIPTION_FEATURE_KEY, {
+          providerProfileId: null,
+          modelId: null,
+          fallbackProviderProfileId: null,
+          fallbackModelId: null,
+        });
+      } else {
+        if (!selected || !preset) throw new Error("文字起こしに使用するAIを選択してください");
+        const model = modelId.trim() || preset.defaultTranscriptionModel;
+        await api.setFeatureBinding(TRANSCRIPTION_FEATURE_KEY, {
+          providerProfileId: selected.id,
+          modelId: model,
+          fallbackProviderProfileId: null,
+          fallbackModelId: null,
+        });
+      }
+      await onSaved();
+    } catch (err) {
+      setError(messageOf(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="settings-section">
+      <h2 className="settings-section__title">文字起こし方法</h2>
+      <p className="settings-note">
+        PC内のWhisper、ChatGPT（OpenAI）、Geminiから選べます。APIを選ぶと録音チャンクを選択した接続先へ送信します。
+      </p>
+      <div className="binding-row">
+        <label className="settings-field">
+          文字起こしに使用
+          <select
+            value={providerId}
+            onChange={(event) => {
+              const nextId = event.target.value;
+              setProviderId(nextId);
+              const provider = available.find((item) => item.id === nextId);
+              const type = provider && isProviderType(provider.providerType) ? provider.providerType : null;
+              setModelId(type ? PROVIDER_PRESETS[type].defaultTranscriptionModel : "");
+            }}
+          >
+            <option value="local">内蔵Whisper（ローカル）</option>
+            {available.map((provider) => (
+              <option key={provider.id} value={provider.id}>
+                {provider.displayName}
+              </option>
+            ))}
+          </select>
+        </label>
+        {preset && (
+          <label className="settings-field">
+            文字起こしモデル
+            <input
+              value={modelId}
+              list={`transcription-models-${selectedType}`}
+              onChange={(event) => setModelId(event.target.value)}
+            />
+            <datalist id={`transcription-models-${selectedType}`}>
+              {preset.transcriptionModels.map((model) => (
+                <option key={model} value={model} />
+              ))}
+            </datalist>
+          </label>
+        )}
+        {error && (
+          <p className="settings-actions__error" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="settings-actions">
+          <button type="button" disabled={busy} onClick={() => void save()}>
+            {busy ? "保存中…" : "文字起こし設定を保存"}
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 type DownloadProgress = {
   name: string;
   receivedBytes: number;
@@ -538,17 +648,20 @@ function UsageSection() {
 export function AiSettingsPage() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [summaryBinding, setSummaryBinding] = useState<FeatureBinding | null>(null);
+  const [transcriptionBinding, setTranscriptionBinding] = useState<FeatureBinding | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     try {
-      const [nextProviders, binding] = await Promise.all([
+      const [nextProviders, binding, nextTranscriptionBinding] = await Promise.all([
         api.listProviders(),
         api.getFeatureBinding(SUMMARY_FEATURE_KEY),
+        api.getFeatureBinding(TRANSCRIPTION_FEATURE_KEY),
       ]);
       setProviders(nextProviders);
       setSummaryBinding(binding);
+      setTranscriptionBinding(nextTranscriptionBinding);
       setError(null);
     } catch (err) {
       setError(messageOf(err));
@@ -556,10 +669,15 @@ export function AiSettingsPage() {
   }, []);
 
   useEffect(() => {
-    void Promise.all([api.listProviders(), api.getFeatureBinding(SUMMARY_FEATURE_KEY)])
-      .then(([nextProviders, binding]) => {
+    void Promise.all([
+      api.listProviders(),
+      api.getFeatureBinding(SUMMARY_FEATURE_KEY),
+      api.getFeatureBinding(TRANSCRIPTION_FEATURE_KEY),
+    ])
+      .then(([nextProviders, binding, nextTranscriptionBinding]) => {
         setProviders(nextProviders);
         setSummaryBinding(binding);
+        setTranscriptionBinding(nextTranscriptionBinding);
       })
       .catch((err) => setError(messageOf(err)));
   }, []);
@@ -607,6 +725,12 @@ export function AiSettingsPage() {
             </div>
           )}
         </section>
+        <TranscriptionBindingSection
+          key={`${transcriptionBinding?.providerProfileId ?? "local"}:${transcriptionBinding?.modelId ?? ""}`}
+          providers={providers}
+          binding={transcriptionBinding}
+          onSaved={reload}
+        />
         {form && (
           <ProviderForm
             form={form}

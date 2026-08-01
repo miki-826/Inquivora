@@ -2565,6 +2565,56 @@ input[type="radio"] {
   margin-top: 2px;
 }
 
+.meeting-sensitivity {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 14px;
+}
+
+.meeting-sensitivity > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.meeting-sensitivity strong {
+  color: var(--color-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.meeting-sensitivity input[type="range"] {
+  width: 100%;
+  accent-color: var(--color-primary);
+}
+
+.meeting-sensitivity small {
+  color: var(--color-text-muted);
+  line-height: 1.45;
+}
+
+.meeting-start-blockers {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-danger) 35%, var(--color-border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-danger) 7%, var(--color-surface));
+  color: var(--color-text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.meeting-start-blockers strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.meeting-start-blockers ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
 @media (max-width: 900px) {
   .three-pane__left,
   .three-pane__right {

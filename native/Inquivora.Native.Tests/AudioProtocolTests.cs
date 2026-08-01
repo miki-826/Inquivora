@@ -16,6 +16,17 @@ public class AudioProtocolTests
         Assert.Equal("default", command.LoopbackDeviceId);
         Assert.Equal(20, command.ChunkSeconds);
         Assert.Equal("C:/audio", command.OutputDir);
+        Assert.Equal(1.5, command.MicGain);
+        Assert.Equal(1.0, command.LoopbackGain);
+    }
+
+    [Fact]
+    public void GainValuesAreClampedToSupportedRange()
+    {
+        var command = AudioProtocol.Parse(
+            """{"command":"start","micDeviceId":"default","outputDir":"C:/audio","micGain":9,"loopbackGain":0.1}""");
+        Assert.Equal(4.0, command.MicGain);
+        Assert.Equal(0.5, command.LoopbackGain);
     }
 
     [Fact]

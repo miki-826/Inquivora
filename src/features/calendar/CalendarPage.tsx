@@ -122,6 +122,24 @@ export function CalendarPage() {
   const taskListFontSize = useSettingsStore((s) => s.taskListFontSize);
   const [selection, setSelection] = useState<CalendarSelection>(null);
   const calendarRef = useRef<FullCalendar | null>(null);
+  const calendarContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const container = calendarContainerRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+    let frame = 0;
+    const resize = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => calendarRef.current?.getApi().updateSize());
+    };
+    const observer = new ResizeObserver(resize);
+    observer.observe(container);
+    resize();
+    return () => {
+      observer.disconnect();
+      window.cancelAnimationFrame(frame);
+    };
+  }, []);
 
   // 通知クリック（§14.3）: 対象予定の日付へ移動して右パネルで選択する
   useEffect(() => {
@@ -197,7 +215,10 @@ export function CalendarPage() {
       leftLabel="タスク設定"
       rightLabel="予定詳細"
     >
-      <div className={`calendar-page calendar-page--task-font-${taskListFontSize}`}>
+      <div
+        ref={calendarContainerRef}
+        className={`calendar-page calendar-page--task-font-${taskListFontSize}`}
+      >
         {error && (
           <p className="calendar-page__error" role="alert">
             {error}

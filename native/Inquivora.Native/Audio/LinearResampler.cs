@@ -44,4 +44,33 @@ public static class LinearResampler
         }
         return mono;
     }
+
+    public static float[] ToStrongestChannelMono(float[] interleaved, int channels)
+    {
+        if (channels <= 1)
+        {
+            return interleaved;
+        }
+        var frames = interleaved.Length / channels;
+        var sums = new double[channels];
+        for (var frame = 0; frame < frames; frame++)
+        {
+            for (var channel = 0; channel < channels; channel++)
+            {
+                var sample = interleaved[frame * channels + channel];
+                sums[channel] += (double)sample * sample;
+            }
+        }
+        var strongest = 0;
+        for (var channel = 1; channel < channels; channel++)
+        {
+            if (sums[channel] > sums[strongest]) strongest = channel;
+        }
+        var mono = new float[frames];
+        for (var frame = 0; frame < frames; frame++)
+        {
+            mono[frame] = interleaved[frame * channels + strongest];
+        }
+        return mono;
+    }
 }

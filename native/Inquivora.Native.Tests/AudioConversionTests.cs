@@ -39,6 +39,22 @@ public class AudioConversionTests
     }
 
     [Fact]
+    public void StrongestChannelMonoPreservesSingleChannelMicrophoneLevel()
+    {
+        var interleaved = new float[] { 0.4f, 0.0f, -0.2f, 0.0f };
+        var mono = LinearResampler.ToStrongestChannelMono(interleaved, channels: 2);
+        Assert.Equal(new[] { 0.4f, -0.2f }, mono);
+    }
+
+    [Fact]
+    public void GainAmplifiesAndClampsSamples()
+    {
+        var adjusted = AudioMath.ApplyGain(new float[] { 0.1f, -0.4f }, 3.0);
+        Assert.Equal(0.3f, adjusted[0], 3);
+        Assert.Equal(-1.0f, adjusted[1], 3);
+    }
+
+    [Fact]
     public void Wavヘッダーは16bitモノラル16kHzを示す()
     {
         var dir = Directory.CreateTempSubdirectory();

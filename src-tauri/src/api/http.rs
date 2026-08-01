@@ -3,6 +3,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
+use base64::Engine;
 use serde::Serialize;
 
 use crate::api::client::{
@@ -272,6 +273,51 @@ pub async fn transcribe(
             false,
         )
     })?;
+    if profile.provider_type == "gemini" {
+        let instruction = match request.prompt.as_deref() {
+            Some(prompt) if !prompt.trim().is_empty() => format!(
+                "この音声を{}で正確に文字起こししてください。説明やMarkdownを付けず、文字起こし本文だけを返してください。追加の用語情報: {}",
+                request.language, prompt
+            ),
+            _ => format!(
+                "この音声を{}で正確に文字起こししてください。説明やMarkdownを付けず、文字起こし本文だけを返してください。",
+                request.language
+            ),
+        };
+        let body = serde_json::json!({
+            "contents": [{
+                "role": "user",
+                "parts": [
+                    { "text": instruction },
+                    {
+                        "inlineData": {
+                            "mimeType": "audio/wav",
+                            "data": base64::engine::general_purpose::STANDARD.encode(&bytes),
+                        }
+                    }
+                ]
+            }],
+            "generationConfig": {
+                "temperature": 0.0,
+                "maxOutputTokens": 8192
+            }
+        });
+        let client = http_client(profile.timeout_ms)?;
+        let url = format!("{}/models/{}:generateContent", profile.base_url, request.model);
+        let (status, response_body) = send_request(profile, client.post(url).json(&body)).await?;
+        if status != 200 {
+            return Err(status_error_with_body(
+                status,
+                "Gemini文字起こしAPIが失敗しました",
+                &response_body,
+            ));
+        }
+        return Ok(TranscriptionResult {
+            text: parse_gemini_content(&response_body)?.trim().to_string(),
+            language: Some(request.language),
+            duration_ms: None,
+        });
+    }
     let file_name = Path::new(&request.audio_path)
         .file_name()
         .map(|name| name.to_string_lossy().to_string())
@@ -292,7 +338,7 @@ pub async fn transcribe(
     let url = format!("{}/audio/transcriptions", profile.base_url);
     let (status, body) = send_request(profile, client.post(url).multipart(form)).await?;
     if status != 200 {
-        return Err(status_error(status, "文字起こしAPIが失敗しました"));
+        return Err(status_error_with_body(status, "文字起こしAPIが失敗しました", &body));
     }
     parse_transcription_response(&body)
 }
@@ -709,6 +755,34 @@ mod tests {
         assert!(body.contains("whisper-1"));
         assert!(body.contains("chunk0.wav"));
         assert!(body.contains("RIFFfakewav"));
+    }
+
+    #[tokio::test]
+    async fn gemini文字起こしは音声をinline_dataで送信する() {
+        let response = r#"{"candidates":[{"content":{"parts":[{"text":"こんにちは。"}]}}]}"#;
+        let (base, rx) = spawn_mock_server_root("HTTP/1.1 200 OK", response);
+        let dir = tempfile::tempdir().unwrap();
+        let wav_path = dir.path().join("chunk0.wav");
+        std::fs::write(&wav_path, b"RIFFfakewav").unwrap();
+        let result = transcribe(
+            &provider_runtime("gemini", &base, Some("g-key")),
+            TranscribeRequest {
+                audio_path: wav_path.to_string_lossy().to_string(),
+                model: "gemini-2.5-flash".to_string(),
+                language: "ja".to_string(),
+                prompt: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.text, "こんにちは。");
+        let req = rx.recv().unwrap();
+        assert!(req.head.starts_with("POST /models/gemini-2.5-flash:generateContent"));
+        assert!(req.head.to_lowercase().contains("x-goog-api-key: g-key"));
+        let body = String::from_utf8_lossy(&req.body);
+        assert!(body.contains("inlineData"));
+        assert!(body.contains("audio/wav"));
+        assert!(body.contains("UklGRmZha2V3YXY="));
     }
 
     #[test]

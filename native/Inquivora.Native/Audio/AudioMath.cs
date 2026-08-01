@@ -20,4 +20,15 @@ public static class AudioMath
 
     public static bool IsSilent(float[] samples, double threshold = SilenceThreshold) =>
         Rms(samples) < threshold;
+
+    public static float[] ApplyGain(float[] samples, double gain)
+    {
+        var adjusted = new float[samples.Length];
+        var safeGain = double.IsFinite(gain) ? Math.Clamp(gain, 0.5, 4.0) : 1.0;
+        for (var i = 0; i < samples.Length; i++)
+        {
+            adjusted[i] = Math.Clamp((float)(samples[i] * safeGain), -1.0f, 1.0f);
+        }
+        return adjusted;
+    }
 }

@@ -98,8 +98,14 @@ describe("プロバイダープリセット", () => {
       const preset = PROVIDER_PRESETS[type];
       expect(preset.baseUrl.length).toBeGreaterThan(0);
       expect(preset.models).toContain(preset.defaultModel);
+      expect(preset.transcriptionModels).toContain(preset.defaultTranscriptionModel);
       expect(providerTypeLabel(type)).toBe(preset.label);
     }
+  });
+
+  it("OpenAI文字起こしは音声対応モデルを既定にする", () => {
+    expect(PROVIDER_PRESETS.openai.defaultTranscriptionModel).toBe("gpt-4o-mini-transcribe");
+    expect(PROVIDER_PRESETS.openai.transcriptionModels).toContain("gpt-transcribe");
   });
 
   it("全プリセットがAPIキー必須・URL固定", () => {

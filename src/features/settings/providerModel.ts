@@ -11,6 +11,8 @@ export type ProviderPreset = {
   editableBaseUrl: boolean;
   models: string[];
   defaultModel: string;
+  transcriptionModels: string[];
+  defaultTranscriptionModel: string;
 };
 
 /// 対応AIごとの既定設定。UIはこの表だけを見せ、Base URLや認証方式の手入力を不要にする。
@@ -23,6 +25,13 @@ export const PROVIDER_PRESETS: Record<ProviderType, ProviderPreset> = {
     editableBaseUrl: false,
     models: ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "o4-mini"],
     defaultModel: "gpt-4o-mini",
+    transcriptionModels: [
+      "gpt-transcribe",
+      "gpt-4o-transcribe",
+      "gpt-4o-mini-transcribe",
+      "whisper-1",
+    ],
+    defaultTranscriptionModel: "gpt-4o-mini-transcribe",
   },
   gemini: {
     label: "Gemini（Google）",
@@ -32,6 +41,8 @@ export const PROVIDER_PRESETS: Record<ProviderType, ProviderPreset> = {
     editableBaseUrl: false,
     models: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"],
     defaultModel: "gemini-2.5-flash",
+    transcriptionModels: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"],
+    defaultTranscriptionModel: "gemini-2.5-flash",
   },
 };
 

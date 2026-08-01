@@ -102,6 +102,7 @@ internal sealed class SourceCapture : IDisposable
     private readonly TextWriter _log;
     private readonly WasapiCapture _capture;
     private readonly AudioChunker _chunker;
+    private readonly double _gain;
     private readonly object _lock = new();
     private int _chunkIndex;
     private long _levelSamples;
@@ -120,6 +121,7 @@ internal sealed class SourceCapture : IDisposable
         _outputDir = command.OutputDir!;
         _emit = emit;
         _log = log;
+        _gain = source == "mic" ? command.MicGain : command.LoopbackGain;
         _chunker = new AudioChunker(CaptureEngine.TargetSampleRate, command.ChunkSeconds, 1);
         _capture.DataAvailable += OnDataAvailable;
         _capture.RecordingStopped += OnRecordingStopped;
@@ -186,19 +188,22 @@ internal sealed class SourceCapture : IDisposable
         {
             var format = _capture.WaveFormat;
             var floats = ConvertToFloat(e.Buffer, e.BytesRecorded, format);
-            var mono = LinearResampler.ToMono(floats, format.Channels);
+            var mono = _source == "mic"
+                ? LinearResampler.ToStrongestChannelMono(floats, format.Channels)
+                : LinearResampler.ToMono(floats, format.Channels);
             var resampled = LinearResampler.Resample(mono, format.SampleRate, CaptureEngine.TargetSampleRate);
+            var adjusted = AudioMath.ApplyGain(resampled, _gain);
             lock (_lock)
             {
                 if (_stopped)
                 {
                     return;
                 }
-                foreach (var chunk in _chunker.Add(resampled))
+                foreach (var chunk in _chunker.Add(adjusted))
                 {
                     EmitChunk(chunk);
                 }
-                TrackLevel(resampled);
+                TrackLevel(adjusted);
             }
         }
         catch (Exception ex)
