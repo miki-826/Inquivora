@@ -38,6 +38,33 @@ pub fn event_create(state: State<'_, DbState>, input: EventInput) -> Result<Even
     })
 }
 
+/// 日次・週次など、画面側で展開した予定を一度の操作でまとめて登録する。
+#[tauri::command]
+pub fn event_create_many(
+    state: State<'_, DbState>,
+    inputs: Vec<EventInput>,
+) -> Result<Vec<EventRecord>, AppError> {
+    if inputs.is_empty() || inputs.len() > 100 {
+        return Err(AppError::new(
+            "VALIDATION_ERROR", "一括作成できる予定は1件から100件までです", false,
+        ));
+    }
+    let mut conn = state
+        .0
+        .lock()
+        .map_err(|e| AppError::database(format!("DB接続ロックに失敗: {e}")))?;
+    let transaction = conn.transaction()?;
+    let mut created = Vec::with_capacity(inputs.len());
+    for input in &inputs {
+        let event = events::create_event(&transaction, input)?;
+        sync_reminders(&transaction, None, &event)?;
+        indexer::index_event(&transaction, &event)?;
+        created.push(event);
+    }
+    transaction.commit()?;
+    Ok(created)
+}
+
 #[tauri::command]
 pub fn event_update(
     state: State<'_, DbState>,

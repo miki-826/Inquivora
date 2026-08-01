@@ -20,7 +20,13 @@ import {
   type TaskPriority,
   type TaskStatus,
 } from "../tasks/taskModel";
-import { formatEventRange, shiftDateString, type EventRecord } from "./calendarModel";
+import {
+  buildRecurringEventInputs,
+  formatEventRange,
+  shiftDateString,
+  type EventRecord,
+  type EventRepeat,
+} from "./calendarModel";
 import "../tasks/taskColors.css";
 
 export type EventDraft = {
@@ -103,6 +109,7 @@ function EventForm({
   initial,
   submitLabel,
   meta,
+  allowRecurrence,
   onSubmit,
   onDelete,
   onCancel,
@@ -111,11 +118,14 @@ function EventForm({
   initial: EventDraft;
   submitLabel: string;
   meta?: string;
-  onSubmit: (payload: EventInput) => void;
+  allowRecurrence?: boolean;
+  onSubmit: (payload: EventInput, repeat: EventRepeat, repeatCount: number) => void;
   onDelete?: () => void;
   onCancel: () => void;
 }) {
   const [draft, setDraft] = useState(initial);
+  const [repeat, setRepeat] = useState<EventRepeat>("none");
+  const [repeatCount, setRepeatCount] = useState(4);
   const patch = (partial: Partial<EventDraft>) => setDraft((d) => ({ ...d, ...partial }));
 
   return (
@@ -124,7 +134,7 @@ function EventForm({
       onSubmit={(e) => {
         e.preventDefault();
         const payload = draftToPayload(draft);
-        if (payload) onSubmit(payload);
+        if (payload) onSubmit(payload, repeat, repeatCount);
       }}
     >
       <h2 className="pane-title">{heading}</h2>
@@ -198,6 +208,36 @@ function EventForm({
           onChange={(e) => patch({ description: e.target.value })}
         />
       </label>
+      {allowRecurrence && (
+        <div className="event-form__recurrence" aria-label="繰り返し設定">
+          <label>
+            繰り返し
+            <select
+              value={repeat}
+              onChange={(event) => setRepeat(event.target.value as EventRepeat)}
+            >
+              <option value="none">繰り返さない</option>
+              <option value="daily">毎日</option>
+              <option value="weekly">毎週</option>
+            </select>
+          </label>
+          {repeat !== "none" && (
+            <label>
+              作成回数
+              <input
+                type="number"
+                min={2}
+                max={100}
+                value={repeatCount}
+                onChange={(event) => setRepeatCount(Number(event.target.value))}
+              />
+            </label>
+          )}
+          {repeat !== "none" && (
+            <p>初回を含めて{Math.max(2, Math.min(100, repeatCount || 2))}件を一括作成します</p>
+          )}
+        </div>
+      )}
       <div className="event-form__actions">
         <button type="submit" className="event-form__submit" disabled={!draft.title.trim()}>
           {submitLabel}
@@ -342,6 +382,7 @@ export function EventPanel({
 }) {
   const events = useCalendarStore((s) => s.events);
   const createEvent = useCalendarStore((s) => s.createEvent);
+  const createEvents = useCalendarStore((s) => s.createEvents);
   const updateEvent = useCalendarStore((s) => s.updateEvent);
   const removeEvent = useCalendarStore((s) => s.removeEvent);
 
@@ -366,9 +407,20 @@ export function EventPanel({
         heading="新しい予定"
         initial={selection.draft}
         submitLabel="作成"
+        allowRecurrence
         onCancel={onClose}
-        onSubmit={(payload) => {
-          void createEvent(payload).then((created) => {
+        onSubmit={(payload, repeat, repeatCount) => {
+          if (repeat === "none") {
+            void createEvent(payload).then((created) => {
+              if (created) onClose();
+            });
+            return;
+          }
+          const count = Number.isFinite(repeatCount)
+            ? Math.max(2, Math.min(100, Math.trunc(repeatCount)))
+            : 2;
+          const inputs = buildRecurringEventInputs(payload, repeat, count);
+          void createEvents(inputs).then((created) => {
             if (created) onClose();
           });
         }}

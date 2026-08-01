@@ -306,6 +306,40 @@ pub fn meeting_list_segments(
 }
 
 /// 保存済み会議を、利用者が選んだ任意の場所へMarkdownで書き出す。
+fn build_meeting_markdown(
+    conn: &rusqlite::Connection,
+    meeting_id: &str,
+    kind: &str,
+) -> Result<String, AppError> {
+    let meeting = meetings::get_meeting(conn, meeting_id)?;
+    match kind {
+        "minutes" => {
+            let segments = meetings::list_segments(conn, meeting_id)?;
+            Ok(markdown::format_minutes_document(&meeting, &segments))
+        }
+        "summary" => {
+            let decisions = meeting_ai::list_decisions(conn, meeting_id)?;
+            let tasks = meeting_ai::list_candidates(conn, meeting_id)?;
+            markdown::format_summary_document(&meeting, &decisions, &tasks)
+        }
+        _ => Err(AppError::new(
+            "VALIDATION_ERROR", "書き出す内容の種類が正しくありません", false,
+        )),
+    }
+}
+
+/// 保存時とコピー時で同一内容を使えるよう、Markdown本文を返す。
+#[tauri::command]
+pub fn meeting_get_markdown(
+    state: State<'_, DbState>,
+    meeting_id: String,
+    kind: String,
+) -> Result<String, AppError> {
+    let conn = state.0.lock().map_err(lock_error)?;
+    build_meeting_markdown(&conn, &meeting_id, &kind)
+}
+
+/// 保存済み会議を、利用者が選んだ任意の場所へMarkdownで書き出す。
 #[tauri::command]
 pub fn meeting_export_markdown(
     state: State<'_, DbState>,
@@ -323,21 +357,7 @@ pub fn meeting_export_markdown(
     }
     let content = {
         let conn = state.0.lock().map_err(lock_error)?;
-        let meeting = meetings::get_meeting(&conn, &meeting_id)?;
-        match kind.as_str() {
-            "minutes" => {
-                let segments = meetings::list_segments(&conn, &meeting_id)?;
-                markdown::format_minutes_document(&meeting, &segments)
-            }
-            "summary" => {
-                let decisions = meeting_ai::list_decisions(&conn, &meeting_id)?;
-                let tasks = meeting_ai::list_candidates(&conn, &meeting_id)?;
-                markdown::format_summary_document(&meeting, &decisions, &tasks)?
-            }
-            _ => return Err(AppError::new(
-                "VALIDATION_ERROR", "書き出す内容の種類が正しくありません", false,
-            )),
-        }
+        build_meeting_markdown(&conn, &meeting_id, &kind)?
     };
     write_text_atomic(target, &content, FileEncoding::Utf8, LineEnding::Lf)?;
     Ok(target.to_string_lossy().into_owned())

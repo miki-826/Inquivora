@@ -15,6 +15,7 @@ type CalendarState = {
   loadRange: (startUtc: string, endUtc: string) => Promise<void>;
   reload: () => Promise<void>;
   createEvent: (input: EventInput) => Promise<EventRecord | null>;
+  createEvents: (inputs: EventInput[]) => Promise<EventRecord[] | null>;
   updateEvent: (id: string, patch: EventPatch) => Promise<boolean>;
   removeEvent: (id: string) => Promise<void>;
   updateTask: (id: string, patch: TaskPatch) => Promise<boolean>;
@@ -64,6 +65,17 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       const event = await eventService.createEvent(input);
       set((state) => ({ events: [...state.events, event], error: null }));
       return event;
+    } catch (err) {
+      set({ error: errorMessage(err) });
+      return null;
+    }
+  },
+
+  createEvents: async (inputs) => {
+    try {
+      const events = await eventService.createEvents(inputs);
+      set((state) => ({ events: [...state.events, ...events], error: null }));
+      return events;
     } catch (err) {
       set({ error: errorMessage(err) });
       return null;

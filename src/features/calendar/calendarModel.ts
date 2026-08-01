@@ -1,4 +1,5 @@
 import { formatInTimeZone } from "date-fns-tz";
+import type { EventInput } from "../../services/events";
 import {
   TOKYO_TZ,
   TASK_COLOR_VALUES,
@@ -41,6 +42,31 @@ export type CalendarInput = {
   };
 };
 
+export type EventRepeat = "none" | "daily" | "weekly";
+
+/** 1件の予定入力を日次・週次の独立した予定へ展開する。 */
+export function buildRecurringEventInputs(
+  input: EventInput,
+  repeat: EventRepeat,
+  count: number,
+): EventInput[] {
+  if (repeat === "none") return [input];
+  const normalizedCount = Number.isFinite(count)
+    ? Math.max(1, Math.min(100, Math.trunc(count)))
+    : 1;
+  const stepDays = repeat === "daily" ? 1 : 7;
+  const shiftIso = (value: string, days: number) =>
+    new Date(Date.parse(value) + days * 86_400_000).toISOString();
+  return Array.from({ length: normalizedCount }, (_, index) => {
+    const days = index * stepDays;
+    return {
+      ...input,
+      startAtUtc: shiftIso(input.startAtUtc, days),
+      endAtUtc: input.endAtUtc ? shiftIso(input.endAtUtc, days) : input.endAtUtc,
+    };
+  });
+}
+
 /** 日付文字列（yyyy-MM-dd）を日数分ずらす */
 export function shiftDateString(dateString: string, days: number): string {
   const ms = Date.parse(`${dateString}T00:00:00Z`) + days * 86_400_000;
@@ -51,7 +77,7 @@ export function shiftDateString(dateString: string, days: number): string {
 export function eventToCalendarInput(event: EventRecord): CalendarInput {
   const input: CalendarInput = {
     id: `event:${event.id}`,
-    title: event.title,
+    title: `予定 · ${event.title}`,
     start: event.allDay ? tokyoDateString(event.startAtUtc) : event.startAtUtc,
     allDay: event.allDay,
     classNames: ["cal-event"],
@@ -70,7 +96,7 @@ export function taskToCalendarInput(task: Task): CalendarInput | null {
   const allDay = isDateOnlyDue(task.dueAtUtc);
   return {
     id: `task:${task.id}`,
-    title: task.title,
+    title: `タスク · ${task.title}`,
     start: allDay ? tokyoDateString(task.dueAtUtc) : task.dueAtUtc,
     allDay,
     classNames: completed ? ["cal-task", "cal-task--completed"] : ["cal-task"],

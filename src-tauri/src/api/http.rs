@@ -317,7 +317,6 @@ pub async fn transcribe(
                 ]
             }],
             "generationConfig": {
-                "temperature": 0.0,
                 "maxOutputTokens": 8192
             }
         });
@@ -460,12 +459,12 @@ fn gemini_body(request: &SummaryRequest, repair_note: Option<&str>) -> serde_jso
     let generation_config = serde_json::json!({
         "responseFormat": {
             "text": {
-                "mimeType": "application/json",
+                "mimeType": "APPLICATION_JSON",
                 "schema": meeting_output_schema()
             }
         },
         "maxOutputTokens": GEMINI_MAX_OUTPUT_TOKENS,
-        "thinkingConfig": { "thinkingLevel": "low" },
+        "thinkingConfig": { "thinkingLevel": "LOW" },
     });
     serde_json::json!({
         "systemInstruction": { "parts": [{ "text": request.system_prompt }] },
@@ -867,7 +866,7 @@ mod tests {
             &provider_runtime("gemini", &base, Some("g-key")),
             TranscribeRequest {
                 audio_path: wav_path.to_string_lossy().to_string(),
-                model: "gemini-2.5-flash".to_string(),
+                model: "gemini-3.6-flash".to_string(),
                 language: "ja".to_string(),
                 prompt: None,
             },
@@ -876,12 +875,13 @@ mod tests {
         .unwrap();
         assert_eq!(result.text, "こんにちは。");
         let req = rx.recv().unwrap();
-        assert!(req.head.starts_with("POST /models/gemini-2.5-flash:generateContent"));
+        assert!(req.head.starts_with("POST /models/gemini-3.6-flash:generateContent"));
         assert!(req.head.to_lowercase().contains("x-goog-api-key: g-key"));
         let body = String::from_utf8_lossy(&req.body);
         assert!(body.contains("inlineData"));
         assert!(body.contains("audio/wav"));
         assert!(body.contains("UklGRmZha2V3YXY="));
+        assert!(!body.contains("temperature"));
     }
 
     #[test]
@@ -956,8 +956,8 @@ mod tests {
         generate_summary(&profile, request).await.unwrap();
         let sent = String::from_utf8_lossy(&rx.recv().unwrap().body).to_string();
         assert!(sent.contains("\"maxOutputTokens\""), "{sent}");
-        assert!(sent.contains("\"thinkingLevel\":\"low\""), "{sent}");
-        assert!(sent.contains("\"mimeType\":\"application/json\""), "{sent}");
+        assert!(sent.contains("\"thinkingLevel\":\"LOW\""), "{sent}");
+        assert!(sent.contains("\"mimeType\":\"APPLICATION_JSON\""), "{sent}");
     }
 
     #[tokio::test]

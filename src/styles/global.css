@@ -2112,6 +2112,8 @@ input[type="radio"] {
 .event-form input[type="text"],
 .event-form input[type="date"],
 .event-form input[type="time"],
+.event-form input[type="number"],
+.event-form select,
 .event-form textarea {
   padding: 7px 9px;
   border: 1px solid var(--color-border);
@@ -2191,7 +2193,8 @@ input[type="radio"] {
 .event-form__submit {
   background: var(--color-primary);
   border-color: var(--color-primary);
-  color: #fff;
+  color: #fff !important;
+  -webkit-text-fill-color: #fff;
 }
 
 .event-form__submit:disabled {
@@ -2208,6 +2211,38 @@ input[type="radio"] {
 
 .event-form__allday input {
   width: auto;
+}
+
+.event-form__recurrence {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-subtle);
+}
+
+.event-form__recurrence label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.event-form__recurrence select,
+.event-form__recurrence input {
+  width: 100%;
+  min-width: 0;
+}
+
+.event-form__recurrence p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 11px;
 }
 
 .event-form__meta {
@@ -2252,6 +2287,32 @@ input[type="radio"] {
   --fc-event-bg-color: var(--color-primary);
   --fc-event-border-color: var(--color-primary);
   font-size: 15px;
+}
+
+.calendar-page__legend {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 2px 7px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.calendar-page__legend span {
+  padding: 2px 7px;
+  border: 1px solid var(--color-primary);
+  border-radius: 999px;
+}
+
+.calendar-page__legend-event {
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.calendar-page__legend-task {
+  border-style: dashed !important;
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 10%, var(--color-surface));
 }
 
 .calendar-page .fc .fc-button {
@@ -2319,6 +2380,12 @@ input[type="radio"] {
   --fc-event-border-color: var(--color-warning);
   background: var(--color-warning);
   border-color: var(--color-warning);
+  border-style: dashed;
+  font-weight: 600;
+}
+
+.cal-event {
+  border-style: solid;
 }
 
 .cal-task--completed {

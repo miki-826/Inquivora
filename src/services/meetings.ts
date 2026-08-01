@@ -86,6 +86,13 @@ export async function exportMeetingMarkdown(
   return (await invoke("meeting_export_markdown", { meetingId, targetPath, kind })) as string;
 }
 
+export async function getMeetingMarkdown(
+  meetingId: string,
+  kind: "minutes" | "summary",
+): Promise<string> {
+  return (await invoke("meeting_get_markdown", { meetingId, kind })) as string;
+}
+
 export async function appendSegmentToFile(
   meetingId: string,
   segmentMarkdown: string,

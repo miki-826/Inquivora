@@ -30,6 +30,10 @@ export function createEvent(input: EventInput): Promise<EventRecord> {
   return invoke("event_create", { input });
 }
 
+export function createEvents(inputs: EventInput[]): Promise<EventRecord[]> {
+  return invoke("event_create_many", { inputs });
+}
+
 export function updateEvent(id: string, patch: EventPatch): Promise<EventRecord> {
   return invoke("event_update", { id, patch });
 }

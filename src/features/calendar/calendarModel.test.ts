@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Task } from "../tasks/taskModel";
 import {
   buildCalendarInputs,
+  buildRecurringEventInputs,
   eventToCalendarInput,
   formatEventRange,
   taskToCalendarInput,
@@ -53,6 +54,7 @@ describe("eventToCalendarInput", () => {
   it("時刻付き予定はUTCのまま渡す", () => {
     const input = eventToCalendarInput(event({}));
     expect(input.id).toBe("event:e1");
+    expect(input.title).toBe("予定 · 打合せ");
     expect(input.start).toBe("2026-07-17T01:00:00Z");
     expect(input.end).toBe("2026-07-17T02:00:00Z");
     expect(input.allDay).toBe(false);
@@ -89,6 +91,7 @@ describe("taskToCalendarInput", () => {
   it("時刻付きは時刻イベント", () => {
     const input = taskToCalendarInput(task({ dueAtUtc: "2026-07-17T01:00:00Z" }));
     expect(input?.id).toBe("task:t1");
+    expect(input?.title).toBe("タスク · タスク");
     expect(input?.start).toBe("2026-07-17T01:00:00Z");
     expect(input?.allDay).toBe(false);
     expect(input?.classNames).toContain("cal-task");
@@ -106,6 +109,35 @@ describe("taskToCalendarInput", () => {
     );
     expect(input?.classNames).toContain("cal-task--completed");
     expect(input?.extendedProps.completed).toBe(true);
+  });
+});
+
+describe("buildRecurringEventInputs", () => {
+  const base = {
+    title: "朝会",
+    startAtUtc: "2026-08-01T00:00:00.000Z",
+    endAtUtc: "2026-08-01T00:30:00.000Z",
+    location: "オンライン",
+  };
+
+  it("毎日の予定を指定回数へ展開する", () => {
+    const inputs = buildRecurringEventInputs(base, "daily", 3);
+    expect(inputs.map((input) => input.startAtUtc)).toEqual([
+      "2026-08-01T00:00:00.000Z",
+      "2026-08-02T00:00:00.000Z",
+      "2026-08-03T00:00:00.000Z",
+    ]);
+    expect(inputs[2].endAtUtc).toBe("2026-08-03T00:30:00.000Z");
+    expect(inputs[2].location).toBe("オンライン");
+  });
+
+  it("毎週の予定を7日ずつずらす", () => {
+    const inputs = buildRecurringEventInputs(base, "weekly", 2);
+    expect(inputs[1].startAtUtc).toBe("2026-08-08T00:00:00.000Z");
+  });
+
+  it("繰り返しなしは入力を1件だけ返す", () => {
+    expect(buildRecurringEventInputs(base, "none", 99)).toEqual([base]);
   });
 });
 

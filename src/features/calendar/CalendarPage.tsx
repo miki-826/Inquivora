@@ -224,6 +224,10 @@ export function CalendarPage() {
             {error}
           </p>
         )}
+        <div className="calendar-page__legend" aria-label="カレンダー項目の種類">
+          <span className="calendar-page__legend-event">予定</span>
+          <span className="calendar-page__legend-task">タスク</span>
+        </div>
         <FullCalendar
           ref={calendarRef}
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}

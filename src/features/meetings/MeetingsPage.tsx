@@ -7,6 +7,7 @@ import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
 import {
   deleteMeetingAudio,
   exportMeetingMarkdown,
+  getMeetingMarkdown,
   isTranscriptionReady,
   listAudioDevices,
   meetingHasAudio,
@@ -135,10 +136,10 @@ async function chooseAndExportMarkdown(
   kind: "minutes" | "summary",
 ): Promise<string | null> {
   const { save } = await import("@tauri-apps/plugin-dialog");
-  const fileName = markdownFileName(meeting.title, kind === "minutes" ? "文字起こし" : "要約");
+  const fileName = markdownFileName(meeting.title, kind === "minutes" ? "文字起こし" : "AI議事録");
   const base = meeting.targetFilePath.replace(/[^/\\]+$/, "");
   const selected = await save({
-    title: kind === "minutes" ? "文字起こしをMarkdownで保存" : "要約をMarkdownで保存",
+    title: kind === "minutes" ? "文字起こしをMarkdownで保存" : "AI議事録をMarkdownで保存",
     defaultPath: `${base}${fileName}`,
     filters: [{ name: "Markdown", extensions: ["md"] }],
   });
@@ -933,14 +934,17 @@ function AiMeetingPanel() {
               <button
                 type="button"
                 onClick={() => {
-                  void copyText(ai.summary!).then(() => {
-                    setSummaryMessage("コピーしました");
-                    window.setTimeout(() => setSummaryMessage(null), 2000);
-                  }).catch((err) => setSummaryMessage(err instanceof Error ? err.message : String(err)));
+                  void getMeetingMarkdown(selectedMeeting.id, "summary")
+                    .then(copyText)
+                    .then(() => {
+                      setSummaryMessage("要約・決定事項・タスク候補をコピーしました");
+                      window.setTimeout(() => setSummaryMessage(null), 2000);
+                    })
+                    .catch((err) => setSummaryMessage(err instanceof Error ? err.message : String(err)));
                 }}
               >
-                {summaryMessage === "コピーしました" ? <Check size={13} aria-hidden /> : <Clipboard size={13} aria-hidden />}
-                コピー
+                {summaryMessage?.includes("コピーしました") ? <Check size={13} aria-hidden /> : <Clipboard size={13} aria-hidden />}
+                Markdownをコピー
               </button>
               <button
                 type="button"

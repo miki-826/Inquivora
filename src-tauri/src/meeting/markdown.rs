@@ -141,7 +141,35 @@ pub fn format_summary_document(
     let summary = meeting.summary.as_deref().map(str::trim).filter(|value| !value.is_empty())
         .ok_or_else(|| AppError::new("MEETING_NO_SUMMARY", "要約がまだ生成されていません", false))?;
     let decision_lines: Vec<String> = decisions.iter().map(|item| item.text.clone()).collect();
-    let task_lines: Vec<String> = tasks.iter().map(|item| item.title.clone()).collect();
+    let task_lines: Vec<String> = tasks
+        .iter()
+        .map(|item| {
+            let description = item.description.as_deref().map(str::trim).filter(|value| !value.is_empty());
+            let task_text = match description {
+                Some(value) => format!("{} — {value}", item.title.trim()),
+                None => item.title.trim().to_string(),
+            };
+            let mut details = Vec::new();
+            if let Some(assignee) = item.assignee.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+                details.push(format!("担当: {assignee}"));
+            }
+            if let Some(due_at) = item.due_at.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+                details.push(format!("期限: {due_at}"));
+            }
+            let priority = match item.priority.as_str() {
+                "high" => "高",
+                "low" => "低",
+                _ => "中",
+            };
+            details.push(format!("優先度: {priority}"));
+            let suffix = if details.is_empty() {
+                String::new()
+            } else {
+                format!("（{}）", details.join(" / "))
+            };
+            format!("{task_text}{suffix}")
+        })
+        .collect();
     Ok(format!(
         "# {} - 要約\n\n## 要約\n\n{}\n\n{}\n{}",
         document_title(&meeting.title), summary,
@@ -311,5 +339,37 @@ mod tests {
         assert!(output.contains("## 文字起こし"));
         assert!(output.contains("### 10:03 自分"));
         assert!(!output.contains("inquivora:meeting"));
+    }
+
+    #[test]
+    fn ai要約markdownは決定事項とタスク詳細を含む() {
+        let meeting = Meeting {
+            id: "m-1".to_string(), workspace_id: None, title: "定例会議".to_string(),
+            started_at: "2026-08-01T01:00:00Z".to_string(), ended_at: None,
+            timezone: "Asia/Tokyo".to_string(), target_file_path: "C:/notes/meeting.md".to_string(),
+            start_marker: start_marker("m-1"), end_marker: end_marker("m-1"),
+            summary: Some("今週の方針を確認した。".to_string()),
+            status: crate::database::meetings::MeetingStatus::Completed,
+            created_at: "2026-08-01T01:00:00Z".to_string(),
+            updated_at: "2026-08-01T01:00:00Z".to_string(),
+        };
+        let decisions = vec![MeetingDecision {
+            id: "d-1".to_string(), meeting_id: "m-1".to_string(),
+            text: "新方式を採用する".to_string(), source_start_ms: Some(1_000),
+            created_at: "2026-08-01T01:00:00Z".to_string(),
+        }];
+        let tasks = vec![TaskCandidate {
+            id: "c-1".to_string(), meeting_id: "m-1".to_string(),
+            title: "資料を更新する".to_string(), description: None,
+            due_at: Some("2026-08-05T00:00:00Z".to_string()), priority: "high".to_string(),
+            assignee: Some("田中".to_string()), source_start_ms: Some(2_000),
+            status: "pending".to_string(), created_at: "2026-08-01T01:00:00Z".to_string(),
+        }];
+        let output = format_summary_document(&meeting, &decisions, &tasks).unwrap();
+        assert!(output.contains("## 要約\n\n今週の方針を確認した。"));
+        assert!(output.contains("## 決定事項\n\n- 新方式を採用する"));
+        assert!(output.contains(
+            "- [ ] 資料を更新する（担当: 田中 / 期限: 2026-08-05T00:00:00Z / 優先度: 高）"
+        ));
     }
 }
