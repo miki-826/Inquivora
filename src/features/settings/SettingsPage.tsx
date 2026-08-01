@@ -352,8 +352,8 @@ function AppearanceSettingsSection() {
         画面のアニメーションを減らす
       </label>
       <div className="settings-field">
-        カレンダーのタスク文字サイズ
-        <div className="theme-options" role="group" aria-label="カレンダーのタスク文字サイズ">
+        カレンダーの予定・タスク文字サイズ
+        <div className="theme-options" role="group" aria-label="カレンダーの予定・タスク文字サイズ">
           {[
             ["small", "小"],
             ["medium", "中"],
@@ -379,15 +379,16 @@ function LicenseSection() {
     <section className="settings-section">
       <h2 className="settings-section__title">ライセンス</h2>
       <p className="settings-note">
-        Inquivora は Monaco Editor を使用しています。Monaco Editor は Microsoft Corporation
-        により MIT License で提供されています。
+        Inquivora は Monaco Editor、Tauri、Whisper.net などの第三者ソフトウェアを使用しています。
+        各コンポーネントのライセンスと著作権表示は配布パッケージに同梱しています。
       </p>
       <details className="settings-license">
-        <summary>Monaco Editor の MIT ライセンス全文</summary>
+        <summary>第三者ライセンスの概要</summary>
         <pre>{thirdPartyNotices}</pre>
       </details>
       <p className="settings-note">
-        同じ内容の THIRD_PARTY_NOTICES.md を配布パッケージにも同梱しています。
+        詳細は THIRD_PARTY_LICENSES_NODE.txt、THIRD_PARTY_LICENSES_RUST.txt、
+        THIRD_PARTY_LICENSES_DOTNET.txt をご確認ください。
       </p>
     </section>
   );

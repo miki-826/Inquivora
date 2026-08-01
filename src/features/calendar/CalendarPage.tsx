@@ -151,6 +151,8 @@ export function CalendarPage() {
   const trashRef = useRef<HTMLDivElement | null>(null);
   const [calendarItemDragging, setCalendarItemDragging] = useState(false);
   const [itemFilter, setItemFilter] = useState<CalendarItemFilter>("all");
+  const eventVisible = itemFilter === "all" || itemFilter === "event";
+  const taskVisible = itemFilter === "all" || itemFilter === "task";
 
   useEffect(() => {
     const container = calendarContainerRef.current;
@@ -275,7 +277,7 @@ export function CalendarPage() {
     >
       <div
         ref={calendarContainerRef}
-        className={`calendar-page calendar-page--task-font-${taskListFontSize}`}
+        className={`calendar-page calendar-page--item-font-${taskListFontSize}`}
       >
         {error && (
           <p className="calendar-page__error" role="alert">
@@ -285,18 +287,18 @@ export function CalendarPage() {
         <div className="calendar-page__legend" aria-label="カレンダーの表示切り替え">
           <button
             type="button"
-            className={`calendar-page__legend-event${itemFilter === "event" ? " calendar-page__legend--active" : ""}`}
-            aria-pressed={itemFilter === "event"}
-            title={itemFilter === "event" ? "予定とタスクを表示" : "予定のみ表示"}
+            className={`calendar-page__legend-event${eventVisible ? " calendar-page__legend--active" : ""}`}
+            aria-pressed={eventVisible}
+            title={eventVisible ? "予定を非表示" : "予定を表示"}
             onClick={() => setItemFilter((current) => nextCalendarItemFilter(current, "event"))}
           >
             予定
           </button>
           <button
             type="button"
-            className={`calendar-page__legend-task${itemFilter === "task" ? " calendar-page__legend--active" : ""}`}
-            aria-pressed={itemFilter === "task"}
-            title={itemFilter === "task" ? "予定とタスクを表示" : "タスクのみ表示"}
+            className={`calendar-page__legend-task${taskVisible ? " calendar-page__legend--active" : ""}`}
+            aria-pressed={taskVisible}
+            title={taskVisible ? "タスクを非表示" : "タスクを表示"}
             onClick={() => setItemFilter((current) => nextCalendarItemFilter(current, "task"))}
           >
             タスク

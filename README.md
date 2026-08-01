@@ -7,7 +7,7 @@
 [![CI](https://github.com/miki-826/Inquivora/actions/workflows/ci.yml/badge.svg)](https://github.com/miki-826/Inquivora/actions/workflows/ci.yml)
 [![Windows Release](https://github.com/miki-826/Inquivora/actions/workflows/release-windows.yml/badge.svg)](https://github.com/miki-826/Inquivora/actions/workflows/release-windows.yml)
 
-[Windows 版をダウンロード](https://github.com/miki-826/Inquivora/releases/tag/v0.1.0-alpha.41) · [リリース一覧](https://github.com/miki-826/Inquivora/releases) · [実装仕様](docs/Inquivora_実装仕様書.md)
+[Windows 版をダウンロード](https://github.com/miki-826/Inquivora/releases/tag/v0.1.0-alpha.42) · [リリース一覧](https://github.com/miki-826/Inquivora/releases) · [実装仕様](docs/Inquivora_実装仕様書.md)
 
 ## 名前に込めた意味
 
@@ -47,7 +47,7 @@
 - 管理者権限は不要
 - インストール先: `%LOCALAPPDATA%\Inquivora`
 
-1. [v0.1.0-alpha.41 の Release](https://github.com/miki-826/Inquivora/releases/tag/v0.1.0-alpha.41) から `Inquivora_0.1.0-alpha.41_x64-setup.exe` をダウンロードします。
+1. [v0.1.0-alpha.42 の Release](https://github.com/miki-826/Inquivora/releases/tag/v0.1.0-alpha.42) から `Inquivora_0.1.0-alpha.42_x64-setup.exe` をダウンロードします。
 2. 必要に応じて、同じページの `SHA256SUMS.txt` でファイルを検証します。
 3. インストーラーを実行します。コードサイニング証明書を付けていないため SmartScreen が表示される場合は、内容を確認して［詳細情報］→［実行］を選びます。
 
@@ -114,6 +114,14 @@ npm run release:windows -- --version 0.1.0-alpha.X
 
 - [実装仕様書](docs/Inquivora_実装仕様書.md) — 本プロジェクトの唯一の仕様書
 - [リリース履歴](https://github.com/miki-826/Inquivora/releases)
-- [第三者ライセンス](THIRD_PARTY_NOTICES.md) — Monaco Editor 0.55.1 の MIT License を含み、Windows 配布パッケージにも同梱
+- [第三者ライセンス概要](THIRD_PARTY_NOTICES.md) — 配布物・外部取得コンポーネントの適用範囲
+- [Node.js 依存関係](THIRD_PARTY_LICENSES_NODE.txt) / [Rust 依存関係](THIRD_PARTY_LICENSES_RUST.txt) / [.NET・Whisper・NSIS](THIRD_PARTY_LICENSES_DOTNET.txt) — ライセンス全文と著作権表示（Windows 配布パッケージにも同梱）
 
-プロジェクト本体のライセンスは明示していません。第三者コンポーネントには、それぞれのライセンスが適用されます。
+プロジェクト本体にはオープンソースライセンスを設定していません。第三者ライセンスで許諾された部分を除き、リポジトリの公開だけを理由とする複製・改変・再配布の許諾はありません。
+
+依存関係を更新した場合は、次のコマンドで配布用ライセンス一覧を再生成します。
+
+```powershell
+cargo install cargo-about --version 0.9.1 --locked --features cli
+npm run licenses:generate
+```

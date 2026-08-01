@@ -1,7 +1,7 @@
 {
   "name": "inquivora",
   "private": true,
-  "version": "0.1.0-alpha.41",
+  "version": "0.1.0-alpha.42",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,6 +14,7 @@
     "test": "vitest run",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "test:dotnet": "dotnet test native/Inquivora.Native.sln",
+    "licenses:generate": "node scripts/generate-third-party-notices.mjs",
     "sidecar:build": "node scripts/build-sidecar.mjs",
     "release:preflight": "node scripts/release-preflight.mjs",
     "release:windows": "node scripts/release-windows.mjs",

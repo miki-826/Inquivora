@@ -77,18 +77,18 @@
   font-size: 16px;
 }
 
-.calendar-page--task-font-small .cal-task .fc-event-title,
-.calendar-page--task-font-small .cal-task .fc-event-time {
+.calendar-page--item-font-small .fc-event-title,
+.calendar-page--item-font-small .fc-event-time {
   font-size: 10px;
 }
 
-.calendar-page--task-font-medium .cal-task .fc-event-title,
-.calendar-page--task-font-medium .cal-task .fc-event-time {
+.calendar-page--item-font-medium .fc-event-title,
+.calendar-page--item-font-medium .fc-event-time {
   font-size: 12px;
 }
 
-.calendar-page--task-font-large .cal-task .fc-event-title,
-.calendar-page--task-font-large .cal-task .fc-event-time {
+.calendar-page--item-font-large .fc-event-title,
+.calendar-page--item-font-large .fc-event-time {
   font-size: 15px;
 }
 

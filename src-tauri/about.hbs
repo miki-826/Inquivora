@@ -1,0 +1,19 @@
+Third-Party Licenses - Rust dependencies
+Generated from Cargo.lock by cargo-about. Runtime dependencies for x86_64-pc-windows-msvc only.
+
+License overview
+{{#each overview}}
+- {{{name}}}: {{count}}
+{{/each}}
+
+{{#each licenses}}
+================================================================================
+{{{name}}}
+Used by:
+{{#each used_by}}
+- {{{crate.name}}} {{crate.version}} ({{#if crate.repository}}{{{crate.repository}}}{{else}}https://crates.io/crates/{{{crate.name}}}{{/if}})
+{{/each}}
+
+{{{text}}}
+
+{{/each}}

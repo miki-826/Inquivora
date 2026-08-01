@@ -158,13 +158,19 @@ describe("isPointInsideBounds", () => {
 });
 
 describe("nextCalendarItemFilter", () => {
-  it("種類を選ぶと単独表示になり、再選択すると両方表示へ戻る", () => {
-    expect(nextCalendarItemFilter("all", "event")).toBe("event");
-    expect(nextCalendarItemFilter("event", "event")).toBe("all");
+  it("予定ボタンは予定だけを表示・非表示にする", () => {
+    expect(nextCalendarItemFilter("all", "event")).toBe("task");
+    expect(nextCalendarItemFilter("task", "event")).toBe("all");
   });
 
-  it("別の種類を選ぶと表示対象を切り替える", () => {
-    expect(nextCalendarItemFilter("event", "task")).toBe("task");
+  it("タスクボタンはタスクだけを表示・非表示にする", () => {
+    expect(nextCalendarItemFilter("all", "task")).toBe("event");
+    expect(nextCalendarItemFilter("event", "task")).toBe("all");
+  });
+
+  it("予定とタスクを両方非表示にしてから個別に戻せる", () => {
+    expect(nextCalendarItemFilter("task", "task")).toBe("none");
+    expect(nextCalendarItemFilter("none", "event")).toBe("event");
   });
 });
 
@@ -194,6 +200,10 @@ describe("buildCalendarInputs", () => {
   it("タスクだけに絞り込める", () => {
     const inputs = buildCalendarInputs(events, tasks, true, "task");
     expect(inputs.map((i) => i.id)).toEqual(["task:t1", "task:t2"]);
+  });
+
+  it("予定とタスクを両方非表示にできる", () => {
+    expect(buildCalendarInputs(events, tasks, true, "none")).toEqual([]);
   });
 });
 

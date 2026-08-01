@@ -43,7 +43,7 @@ export type CalendarInput = {
 };
 
 export type EventRepeat = "none" | "daily" | "weekly";
-export type CalendarItemFilter = "all" | "event" | "task";
+export type CalendarItemFilter = "all" | "event" | "task" | "none";
 
 export type ScreenBounds = { left: number; right: number; top: number; bottom: number };
 
@@ -57,9 +57,16 @@ export function isPointInsideBounds(
 
 export function nextCalendarItemFilter(
   current: CalendarItemFilter,
-  selected: Exclude<CalendarItemFilter, "all">,
+  selected: "event" | "task",
 ): CalendarItemFilter {
-  return current === selected ? "all" : selected;
+  const eventVisible = current === "all" || current === "event";
+  const taskVisible = current === "all" || current === "task";
+  const nextEventVisible = selected === "event" ? !eventVisible : eventVisible;
+  const nextTaskVisible = selected === "task" ? !taskVisible : taskVisible;
+  if (nextEventVisible && nextTaskVisible) return "all";
+  if (nextEventVisible) return "event";
+  if (nextTaskVisible) return "task";
+  return "none";
 }
 
 /** 1件の予定入力を日次・週次の独立した予定へ展開する。 */
@@ -132,8 +139,8 @@ export function buildCalendarInputs(
   showCompletedTasks: boolean,
   filter: CalendarItemFilter = "all",
 ): CalendarInput[] {
-  const eventInputs = filter === "task" ? [] : events.map(eventToCalendarInput);
-  if (filter === "event") return eventInputs;
+  const eventInputs = filter === "task" || filter === "none" ? [] : events.map(eventToCalendarInput);
+  if (filter === "event" || filter === "none") return eventInputs;
   const taskInputs = tasks
     .filter((task) => showCompletedTasks || task.status !== "completed")
     .map(taskToCalendarInput)
