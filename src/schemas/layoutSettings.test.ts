@@ -14,6 +14,7 @@ describe("parseLayoutSettings", () => {
       reduceMotion: true,
       editorFontSize: "large" as const,
       editorWordWrap: false,
+      editorSaveMode: "manual" as const,
     };
     expect(parseLayoutSettings(value)).toEqual(value);
   });
@@ -36,6 +37,7 @@ describe("parseLayoutSettings", () => {
       reduceMotion: false,
       editorFontSize: "medium",
       editorWordWrap: true,
+      editorSaveMode: "auto",
     });
   });
 
@@ -44,6 +46,11 @@ describe("parseLayoutSettings", () => {
     expect(parseLayoutSettings({ navigationPosition: "bottom" }).navigationPosition).toBe(
       "bottom",
     );
+  });
+
+  it("メモ帳の保存方法を保存でき、古い設定は自動保存になる", () => {
+    expect(parseLayoutSettings({ editorSaveMode: "manual" }).editorSaveMode).toBe("manual");
+    expect(parseLayoutSettings({}).editorSaveMode).toBe("auto");
   });
 
   it("nullや不正値は既定値を返す", () => {

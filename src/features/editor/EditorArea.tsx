@@ -1,6 +1,6 @@
 import { DiffEditor, Editor } from "@monaco-editor/react";
 import { listen } from "@tauri-apps/api/event";
-import { Columns2, Eye, EyeOff, Pin, PinOff, X } from "lucide-react";
+import { Columns2, Eye, EyeOff, Pin, PinOff, Save, X } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { PanePlaceholder } from "../../components/common/PanePlaceholder";
 import { useEditorStore } from "../../stores/useEditorStore";
@@ -133,6 +133,15 @@ function EditorToolbar({ tab, secondary = false }: { tab: EditorTab; secondary?:
         </span>
       )}
       <div className="editor-toolbar__actions">
+        <button
+          type="button"
+          title={tab.isDirty ? "保存 (Ctrl+S)" : "保存済み"}
+          aria-label="保存"
+          disabled={!tab.isDirty || readMode !== "normal"}
+          onClick={() => void store.getState().saveTab(tab.id)}
+        >
+          <Save size={14} aria-hidden />
+        </button>
         {secondary ? (
           <button
             type="button"

@@ -1,3 +1,4 @@
+import { isTauri } from "@tauri-apps/api/core";
 import { create } from "zustand";
 import type { EventRecord } from "../features/calendar/calendarModel";
 import type { Task } from "../features/tasks/taskModel";
@@ -48,6 +49,10 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
 
   loadRange: async (startUtc, endUtc) => {
     set({ rangeStartUtc: startUtc, rangeEndUtc: endUtc });
+    if (!isTauri()) {
+      set({ events: [], tasks: [], error: null });
+      return;
+    }
     try {
       const [events, tasks] = await Promise.all([
         eventService.getEventsInRange(startUtc, endUtc),

@@ -20,6 +20,7 @@ export type NavigationPosition = "side" | "top" | "right" | "bottom";
 export type TaskListFontSize = "small" | "medium" | "large";
 export type UiDensity = "comfortable" | "compact";
 export type EditorFontSize = "small" | "medium" | "large";
+export type EditorSaveMode = "auto" | "manual";
 
 export type LayoutSettings = {
   leftSidebarWidth: number;
@@ -32,6 +33,7 @@ export type LayoutSettings = {
   reduceMotion: boolean;
   editorFontSize: EditorFontSize;
   editorWordWrap: boolean;
+  editorSaveMode: EditorSaveMode;
 };
 
 export const DEFAULT_LAYOUT_SETTINGS: LayoutSettings = {
@@ -45,6 +47,7 @@ export const DEFAULT_LAYOUT_SETTINGS: LayoutSettings = {
   reduceMotion: false,
   editorFontSize: "medium",
   editorWordWrap: true,
+  editorSaveMode: "auto",
 };
 
 const layoutSettingsSchema = z.object({
@@ -58,6 +61,7 @@ const layoutSettingsSchema = z.object({
   reduceMotion: z.boolean().optional(),
   editorFontSize: z.enum(["small", "medium", "large"]).optional(),
   editorWordWrap: z.boolean().optional(),
+  editorSaveMode: z.enum(["auto", "manual"]).optional(),
 });
 
 export function parseLayoutSettings(value: unknown): LayoutSettings {
@@ -83,5 +87,6 @@ export function parseLayoutSettings(value: unknown): LayoutSettings {
     reduceMotion: result.data.reduceMotion ?? DEFAULT_LAYOUT_SETTINGS.reduceMotion,
     editorFontSize: result.data.editorFontSize ?? DEFAULT_LAYOUT_SETTINGS.editorFontSize,
     editorWordWrap: result.data.editorWordWrap ?? DEFAULT_LAYOUT_SETTINGS.editorWordWrap,
+    editorSaveMode: result.data.editorSaveMode ?? DEFAULT_LAYOUT_SETTINGS.editorSaveMode,
   };
 }

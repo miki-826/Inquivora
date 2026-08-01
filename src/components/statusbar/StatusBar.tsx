@@ -1,4 +1,5 @@
 import { useEditorStore } from "../../stores/useEditorStore";
+import { useSettingsStore } from "../../stores/useSettingsStore";
 import packageInfo from "../../../package.json";
 
 const ENCODING_LABELS: Record<string, string> = {
@@ -14,10 +15,19 @@ export function StatusBar() {
   const saveError = useEditorStore((s) =>
     s.activeTabId ? s.saveErrors[s.activeTabId] : undefined,
   );
+  const editorSaveMode = useSettingsStore((s) => s.editorSaveMode);
 
   return (
     <footer className="status-bar">
-      <span>{saveError ? `保存失敗: ${saveError}` : activeTab?.isDirty ? "未保存の変更" : "準備完了"}</span>
+      <span>
+        {saveError
+          ? `保存失敗: ${saveError}`
+          : activeTab?.isDirty
+            ? editorSaveMode === "manual"
+              ? "未保存の変更（手動保存）"
+              : "保存中…"
+            : "準備完了"}
+      </span>
       <span className="status-bar__spacer" />
       {activeTab && (
         <>

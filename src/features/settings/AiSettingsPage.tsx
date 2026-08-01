@@ -1,4 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
+import { isTauri } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useState } from "react";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
 import * as api from "../../services/providers";
@@ -41,7 +42,6 @@ type FormState = {
   baseUrl: string;
   apiKey: string;
   modelId: string;
-  customPrompt: string;
 };
 
 function emptyForm(): FormState {
@@ -52,7 +52,6 @@ function emptyForm(): FormState {
     baseUrl: preset.baseUrl,
     apiKey: "",
     modelId: preset.defaultModel,
-    customPrompt: "",
   };
 }
 
@@ -67,7 +66,6 @@ function formFromProvider(provider: Provider): FormState {
     baseUrl: provider.baseUrl || preset.baseUrl,
     apiKey: "",
     modelId: provider.modelId ?? preset.defaultModel,
-    customPrompt: provider.customPrompt ?? "",
   };
 }
 
@@ -115,7 +113,6 @@ function ProviderForm({
       baseUrl,
       authType: preset.authType,
       modelId: model,
-      customPrompt: form.customPrompt.trim() || null,
       timeoutMs: 60000,
       capabilities: capabilitiesForType(form.providerType),
     };
@@ -132,15 +129,6 @@ function ProviderForm({
       // APIキーは保存コマンドへ渡した直後にフォーム状態から破棄する
       if (providerId && preset.needsApiKey && form.apiKey.trim() !== "") {
         await api.setProviderSecret(providerId, form.apiKey);
-      }
-      // 登録したAIを議事録まとめに自動割当（この AI を使う）
-      if (providerId) {
-        await api.setFeatureBinding(SUMMARY_FEATURE_KEY, {
-          providerProfileId: providerId,
-          modelId: model,
-          fallbackProviderProfileId: null,
-          fallbackModelId: null,
-        });
       }
       setForm({ ...form, apiKey: "" });
       await onSaved();
@@ -199,32 +187,8 @@ function ProviderForm({
           />
         </label>
       )}
-      <label className="settings-field">
-        モデル
-        <input
-          type="text"
-          list={`models-${form.providerType}`}
-          value={form.modelId}
-          placeholder={preset.defaultModel}
-          onChange={(e) => setForm({ ...form, modelId: e.target.value })}
-        />
-        <datalist id={`models-${form.providerType}`}>
-          {preset.models.map((model) => (
-            <option key={model} value={model} />
-          ))}
-        </datalist>
-      </label>
-      <label className="settings-field">
-        プロンプト（任意）
-        <textarea
-          rows={4}
-          value={form.customPrompt}
-          placeholder="議事録のまとめ方の希望を書いてください（例: 決定事項を箇条書きで／敬体で など）"
-          onChange={(e) => setForm({ ...form, customPrompt: e.target.value })}
-        />
-      </label>
       <p className="settings-note">
-        プロンプトは議事録まとめAIへの追加の指示として使われます（出力の形式は保たれます）。
+        議事録要約のモデルとプロンプトは、下の「議事録要約」でまとめて設定します。
       </p>
       {error && (
         <p className="settings-actions__error" role="alert">
@@ -283,7 +247,6 @@ function ProviderCard({
         {!provider.enabled && <span className="provider-card__disabled">無効</span>}
       </div>
       {retiredNotice && <div className="provider-card__error">{retiredNotice}</div>}
-      {provider.modelId && <div className="provider-card__meta">モデル: {provider.modelId}</div>}
       <div className="provider-card__meta">
         APIキー: {provider.hasSecret ? "設定済み" : "未設定"}
         {provider.lastTestedAt &&
@@ -378,6 +341,7 @@ function SummaryBindingSection({
       : (initialPreset?.defaultSummaryModel ?? "");
   const [providerId, setProviderId] = useState(initialProvider?.id ?? "");
   const [modelId, setModelId] = useState(initialModel);
+  const [customPrompt, setCustomPrompt] = useState(initialProvider?.customPrompt ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const selected = available.find((provider) => provider.id === providerId) ?? null;
@@ -408,6 +372,9 @@ function SummaryBindingSection({
         fallbackProviderProfileId: null,
         fallbackModelId: null,
       });
+      await api.updateProvider(selected.id, {
+        customPrompt: customPrompt.trim() || null,
+      });
       await onSaved();
     } catch (err) {
       setError(messageOf(err));
@@ -434,6 +401,7 @@ function SummaryBindingSection({
               const type =
                 provider && isProviderType(provider.providerType) ? provider.providerType : null;
               setModelId(type ? PROVIDER_PRESETS[type].defaultSummaryModel : "");
+              setCustomPrompt(provider?.customPrompt ?? "");
             }}
           >
             <option value="">選択してください</option>
@@ -455,6 +423,22 @@ function SummaryBindingSection({
               ))}
             </select>
           </label>
+        )}
+        {preset && (
+          <label className="settings-field">
+            要約プロンプト（任意）
+            <textarea
+              rows={4}
+              value={customPrompt}
+              placeholder="例: 決定事項を箇条書きで／敬体で"
+              onChange={(event) => setCustomPrompt(event.target.value)}
+            />
+          </label>
+        )}
+        {preset && (
+          <p className="settings-note">
+            追加の指示として使われます。議事録のJSON形式は維持されます。
+          </p>
         )}
         {available.length === 0 && (
           <p className="settings-note">先にChatGPTまたはGeminiを登録し、有効にしてください。</p>
@@ -610,6 +594,7 @@ function WhisperSection() {
   }, []);
 
   useEffect(() => {
+    if (!isTauri()) return;
     void whisperApi
       .getWhisperModelStatus()
       .then(setModels)
@@ -739,6 +724,7 @@ function WhisperSection() {
 function UsageSection() {
   const [logs, setLogs] = useState<api.UsageLog[]>([]);
   useEffect(() => {
+    if (!isTauri()) return;
     void api
       .listUsage(null, 20)
       .then(setLogs)
@@ -788,6 +774,7 @@ export function AiSettingsPage() {
   }, []);
 
   useEffect(() => {
+    if (!isTauri()) return;
     void Promise.all([
       api.listProviders(),
       api.getFeatureBinding(SUMMARY_FEATURE_KEY),
@@ -807,7 +794,7 @@ export function AiSettingsPage() {
         <section className="settings-section">
           <h2 className="settings-section__title">AI（接続先）</h2>
           <p className="settings-note">
-            議事録のまとめに使うAIを登録します。AIの種類を選び、APIキーとモデル、必要なら独自のプロンプトを入れるだけです。APIキーはあなたのPCのWindows資格情報マネージャーにのみ保存され、アプリのデータベースやログには残りません。
+            議事録のまとめに使うAIの接続先を登録します。AIの種類とAPIキーを入力してください。モデルとプロンプトは下の「議事録要約」で設定します。APIキーはあなたのPCのWindows資格情報マネージャーにのみ保存され、アプリのデータベースやログには残りません。
           </p>
           {error && (
             <p className="settings-actions__error" role="alert">

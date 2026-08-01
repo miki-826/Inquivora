@@ -1,3 +1,4 @@
+import { isTauri } from "@tauri-apps/api/core";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { useEffect, useState } from "react";
 import { ThreePaneLayout } from "../../components/layout/ThreePaneLayout";
@@ -11,15 +12,19 @@ import { useThemeStore } from "../../stores/useThemeStore";
 import { useSettingsStore } from "../../stores/useSettingsStore";
 import { SettingsNav } from "./SettingsNav";
 import { THEME_OPTIONS } from "./themeModel";
+import thirdPartyNotices from "../../../THIRD_PARTY_NOTICES.md?raw";
 
 const NOTIFICATION_SETTING_KEY = "notifications";
 
 function NotificationSettingsSection() {
-  const [settings, setSettings] = useState<NotificationSettings | null>(null);
+  const [settings, setSettings] = useState<NotificationSettings | null>(() =>
+    isTauri() ? null : parseNotificationSettings(null),
+  );
   const [testState, setTestState] = useState<"idle" | "sending" | "ok" | "error">("idle");
   const [testError, setTestError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!isTauri()) return;
     void loadSetting(NOTIFICATION_SETTING_KEY).then((stored) =>
       setSettings(parseNotificationSettings(stored)),
     );
@@ -30,10 +35,12 @@ function NotificationSettingsSection() {
   const update = (partial: Partial<NotificationSettings>) => {
     const next = { ...settings, ...partial };
     setSettings(next);
+    if (!isTauri()) return;
     void saveSetting(NOTIFICATION_SETTING_KEY, next).then(() => reconcileNotifications());
   };
 
   const sendTest = async () => {
+    if (!isTauri()) return;
     setTestState("sending");
     setTestError(null);
     try {
@@ -121,16 +128,22 @@ function NotificationSettingsSection() {
 }
 
 function GeneralSettingsSection() {
-  const [autostart, setAutostart] = useState<boolean | null>(null);
+  const [autostart, setAutostart] = useState<boolean | null>(() => (isTauri() ? null : false));
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!isTauri()) return;
     void isEnabled()
       .then(setAutostart)
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
   }, []);
 
   const toggle = async (next: boolean) => {
+    if (!isTauri()) {
+      setAutostart(next);
+      setError(null);
+      return;
+    }
     try {
       if (next) {
         await enable();
@@ -185,6 +198,8 @@ function AppearanceSettingsSection() {
   const setEditorFontSize = useSettingsStore((s) => s.setEditorFontSize);
   const editorWordWrap = useSettingsStore((s) => s.editorWordWrap);
   const setEditorWordWrap = useSettingsStore((s) => s.setEditorWordWrap);
+  const editorSaveMode = useSettingsStore((s) => s.editorSaveMode);
+  const setEditorSaveMode = useSettingsStore((s) => s.setEditorSaveMode);
 
   return (
     <section className="settings-section">
@@ -286,6 +301,40 @@ function AppearanceSettingsSection() {
         />
         エディタで長い行を折り返す
       </label>
+      <div className="settings-field">
+        メモ帳の保存方法
+        <div className="theme-options" role="group" aria-label="メモ帳の保存方法">
+          <button
+            type="button"
+            className={`theme-option${editorSaveMode === "auto" ? " theme-option--on" : ""}`}
+            aria-pressed={editorSaveMode === "auto"}
+            onClick={() => {
+              setEditorSaveMode("auto");
+              void import("../../stores/useEditorStore").then(({ useEditorStore }) =>
+                useEditorStore.getState().saveAllTabs(),
+              );
+            }}
+          >
+            自動保存（推奨）
+          </button>
+          <button
+            type="button"
+            className={`theme-option${editorSaveMode === "manual" ? " theme-option--on" : ""}`}
+            aria-pressed={editorSaveMode === "manual"}
+            onClick={() => {
+              setEditorSaveMode("manual");
+              void import("../../stores/useEditorStore").then(({ useEditorStore }) =>
+                useEditorStore.getState().cancelPendingAutosaves(),
+              );
+            }}
+          >
+            手動保存
+          </button>
+        </div>
+      </div>
+      <p className="settings-note">
+        自動保存は入力から約0.8秒後に保存します。手動保存では保存ボタンまたは Ctrl+S を使います。
+      </p>
       <label className="settings-field settings-field--toggle">
         <input
           type="checkbox"
@@ -325,6 +374,25 @@ function AppearanceSettingsSection() {
   );
 }
 
+function LicenseSection() {
+  return (
+    <section className="settings-section">
+      <h2 className="settings-section__title">ライセンス</h2>
+      <p className="settings-note">
+        Inquivora は Monaco Editor を使用しています。Monaco Editor は Microsoft Corporation
+        により MIT License で提供されています。
+      </p>
+      <details className="settings-license">
+        <summary>Monaco Editor の MIT ライセンス全文</summary>
+        <pre>{thirdPartyNotices}</pre>
+      </details>
+      <p className="settings-note">
+        同じ内容の THIRD_PARTY_NOTICES.md を配布パッケージにも同梱しています。
+      </p>
+    </section>
+  );
+}
+
 export function SettingsPage() {
   return (
     <ThreePaneLayout left={<SettingsNav />}>
@@ -332,6 +400,7 @@ export function SettingsPage() {
         <AppearanceSettingsSection />
         <NotificationSettingsSection />
         <GeneralSettingsSection />
+        <LicenseSection />
       </div>
     </ThreePaneLayout>
   );

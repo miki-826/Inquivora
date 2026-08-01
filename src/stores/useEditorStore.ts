@@ -18,6 +18,7 @@ import {
 import type { TreeEntry } from "../features/workspace/treeModel";
 import * as ws from "../services/workspace";
 import type { ReadMode } from "../services/workspace";
+import { useSettingsStore } from "./useSettingsStore";
 import { useWorkspaceStore } from "./useWorkspaceStore";
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
@@ -77,6 +78,7 @@ type EditorStore = {
   saveTab: (tabId: string) => Promise<boolean>;
   saveActiveTab: () => Promise<void>;
   saveAllTabs: () => Promise<void>;
+  cancelPendingAutosaves: () => void;
   handleExternalChanges: (paths: string[]) => Promise<void>;
   resolveConflictReload: () => Promise<void>;
   resolveConflictOverwrite: () => Promise<void>;
@@ -186,6 +188,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
         void get().saveTab(tabId);
       }, AUTOSAVE_DEBOUNCE_MS),
     );
+  }
+
+  function cancelAutosave(tabId: string) {
+    clearTimeout(autosaveTimers.get(tabId));
+    autosaveTimers.delete(tabId);
   }
 
   function patchTab(tabId: string, patch: Partial<EditorTab>) {
@@ -385,9 +392,14 @@ export const useEditorStore = create<EditorStore>((set, get) => {
     closeTab: async (tabId) => {
       const tab = get().tabs.find((t) => t.id === tabId);
       if (!tab) return;
-      clearTimeout(autosaveTimers.get(tabId));
-      autosaveTimers.delete(tabId);
+      cancelAutosave(tabId);
       if (tab.isDirty) {
+        if (
+          useSettingsStore.getState().editorSaveMode === "manual" &&
+          !window.confirm(`「${tab.name}」の変更を保存して閉じますか？`)
+        ) {
+          return;
+        }
         const saved = await get().saveTab(tabId);
         if (!saved) return;
       }
@@ -436,7 +448,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       if (readMode !== "normal") return;
       set((state) => ({ contents: { ...state.contents, [tabId]: content } }));
       patchTab(tabId, { isDirty: true });
-      scheduleAutosave(tabId);
+      if (useSettingsStore.getState().editorSaveMode === "auto") {
+        scheduleAutosave(tabId);
+      } else {
+        cancelAutosave(tabId);
+      }
     },
 
     setCursor: (tabId, line, column) => {
@@ -497,6 +513,11 @@ export const useEditorStore = create<EditorStore>((set, get) => {
       for (const tab of get().tabs) {
         if (tab.isDirty) await get().saveTab(tab.id);
       }
+    },
+
+    cancelPendingAutosaves: () => {
+      autosaveTimers.forEach((timer) => clearTimeout(timer));
+      autosaveTimers.clear();
     },
 
     handleExternalChanges: async (paths) => {

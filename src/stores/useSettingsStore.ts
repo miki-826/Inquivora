@@ -6,6 +6,7 @@ import {
   SIDEBAR_WIDTH_MAX,
   SIDEBAR_WIDTH_MIN,
   type EditorFontSize,
+  type EditorSaveMode,
   type NavigationPosition,
   type TaskListFontSize,
   type UiDensity,
@@ -28,6 +29,7 @@ type SettingsState = {
   reduceMotion: boolean;
   editorFontSize: EditorFontSize;
   editorWordWrap: boolean;
+  editorSaveMode: EditorSaveMode;
   hydrated: boolean;
   hydrate: () => Promise<void>;
   setLeftSidebarWidth: (width: number) => void;
@@ -40,6 +42,7 @@ type SettingsState = {
   setReduceMotion: (reduce: boolean) => void;
   setEditorFontSize: (size: EditorFontSize) => void;
   setEditorWordWrap: (enabled: boolean) => void;
+  setEditorSaveMode: (mode: EditorSaveMode) => void;
 };
 
 let persistTimer: ReturnType<typeof setTimeout> | undefined;
@@ -58,6 +61,7 @@ function schedulePersist(get: () => SettingsState) {
       reduceMotion,
       editorFontSize,
       editorWordWrap,
+      editorSaveMode,
     } = get();
     saveSetting(LAYOUT_SETTING_KEY, {
       leftSidebarWidth,
@@ -70,6 +74,7 @@ function schedulePersist(get: () => SettingsState) {
       reduceMotion,
       editorFontSize,
       editorWordWrap,
+      editorSaveMode,
     }).catch((error) => console.error("レイアウト設定の保存に失敗しました", error));
   }, PERSIST_DEBOUNCE_MS);
 }
@@ -124,6 +129,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
   setEditorWordWrap: (editorWordWrap) => {
     set({ editorWordWrap });
+    schedulePersist(get);
+  },
+  setEditorSaveMode: (editorSaveMode) => {
+    set({ editorSaveMode });
     schedulePersist(get);
   },
 }));

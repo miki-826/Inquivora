@@ -2584,6 +2584,31 @@ input[type="radio"] {
   margin: 4px 0 12px;
 }
 
+.settings-license {
+  margin: 10px 0 12px;
+  font-size: 12px;
+}
+
+.settings-license summary {
+  color: var(--color-primary);
+  cursor: pointer;
+}
+
+.settings-license pre {
+  max-height: 260px;
+  margin: 10px 0 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: var(--color-surface-subtle);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
 .settings-actions {
   display: flex;
   align-items: center;

@@ -116,6 +116,10 @@ preflight 検査（clean tree・テスト・秘密情報スキャン）→ GitHu
 - 仕様: `docs/Inquivora_実装仕様書.md`（唯一の仕様）
 - 変更履歴: [Releases](https://github.com/miki-826/Inquivora/releases) を参照
 
+## 第三者ライセンス
+
+Inquivora は Monaco Editor を使用しています。Monaco Editor は Microsoft Corporation により MIT License で提供されています。著作権表示とライセンス全文は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) を参照してください。このファイルは Windows 配布パッケージにも同梱されます。
+
 ### 最近の更新（抜粋）
 
 - **v0.1.0-alpha.28**: カレンダーの予定・タスクを大きく見やすく。Gemini の認証・出力設定を見直し（API エラーの理由もそのまま表示）。対応 AI を ChatGPT / Gemini の 2 種へ整理（Claude・Ollama を廃止）。メモの分割表示はタブのドラッグ＆ドロップで左右を入れ替え可能に。Ctrl+F の検索バーでツールチップが邪魔してボタンを押せない問題を修正。
