@@ -16,7 +16,13 @@ import { getEvent, type EventPatch } from "../../services/events";
 import { useCalendarStore } from "../../stores/useCalendarStore";
 import { useSettingsStore } from "../../stores/useSettingsStore";
 import { TASK_COLOR_VALUES, TOKYO_TZ, type Task } from "../tasks/taskModel";
-import { buildCalendarInputs, isPointInsideBounds, shiftDateString } from "./calendarModel";
+import {
+  buildCalendarInputs,
+  isPointInsideBounds,
+  nextCalendarItemFilter,
+  shiftDateString,
+  type CalendarItemFilter,
+} from "./calendarModel";
 import { EventPanel, type CalendarSelection, type EventDraft } from "./EventPanel";
 import "./calendarEnhancements.css";
 import "../tasks/taskColors.css";
@@ -144,6 +150,7 @@ export function CalendarPage() {
   const calendarContainerRef = useRef<HTMLDivElement | null>(null);
   const trashRef = useRef<HTMLDivElement | null>(null);
   const [calendarItemDragging, setCalendarItemDragging] = useState(false);
+  const [itemFilter, setItemFilter] = useState<CalendarItemFilter>("all");
 
   useEffect(() => {
     const container = calendarContainerRef.current;
@@ -275,9 +282,25 @@ export function CalendarPage() {
             {error}
           </p>
         )}
-        <div className="calendar-page__legend" aria-label="カレンダー項目の種類">
-          <span className="calendar-page__legend-event">予定</span>
-          <span className="calendar-page__legend-task">タスク</span>
+        <div className="calendar-page__legend" aria-label="カレンダーの表示切り替え">
+          <button
+            type="button"
+            className={`calendar-page__legend-event${itemFilter === "event" ? " calendar-page__legend--active" : ""}`}
+            aria-pressed={itemFilter === "event"}
+            title={itemFilter === "event" ? "予定とタスクを表示" : "予定のみ表示"}
+            onClick={() => setItemFilter((current) => nextCalendarItemFilter(current, "event"))}
+          >
+            予定
+          </button>
+          <button
+            type="button"
+            className={`calendar-page__legend-task${itemFilter === "task" ? " calendar-page__legend--active" : ""}`}
+            aria-pressed={itemFilter === "task"}
+            title={itemFilter === "task" ? "予定とタスクを表示" : "タスクのみ表示"}
+            onClick={() => setItemFilter((current) => nextCalendarItemFilter(current, "task"))}
+          >
+            タスク
+          </button>
         </div>
         <FullCalendar
           ref={calendarRef}
@@ -295,7 +318,7 @@ export function CalendarPage() {
           droppable
           dayMaxEvents
           nowIndicator
-          events={buildCalendarInputs(events, tasks, true)}
+          events={buildCalendarInputs(events, tasks, true, itemFilter)}
           datesSet={(info) => {
             void loadRange(info.start.toISOString(), info.end.toISOString());
           }}

@@ -79,17 +79,17 @@
 
 .calendar-page--task-font-small .cal-task .fc-event-title,
 .calendar-page--task-font-small .cal-task .fc-event-time {
-  font-size: 12px;
+  font-size: 10px;
 }
 
 .calendar-page--task-font-medium .cal-task .fc-event-title,
 .calendar-page--task-font-medium .cal-task .fc-event-time {
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .calendar-page--task-font-large .cal-task .fc-event-title,
 .calendar-page--task-font-large .cal-task .fc-event-time {
-  font-size: 17px;
+  font-size: 15px;
 }
 
 .calendar-task-editor {

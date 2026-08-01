@@ -2314,10 +2314,13 @@ input[type="radio"] {
   font-size: 11px;
 }
 
-.calendar-page__legend span {
+.calendar-page__legend button {
   padding: 2px 7px;
   border: 1px solid var(--color-primary);
   border-radius: 999px;
+  font: inherit;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .calendar-page__legend-event {
@@ -2329,6 +2332,20 @@ input[type="radio"] {
   border-style: dashed !important;
   color: var(--color-warning);
   background: color-mix(in srgb, var(--color-warning) 10%, var(--color-surface));
+}
+
+.calendar-page__legend button:hover {
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 16%, transparent);
+}
+
+.calendar-page__legend-event.calendar-page__legend--active {
+  color: #fff;
+  background: var(--color-primary);
+}
+
+.calendar-page__legend-task.calendar-page__legend--active {
+  color: #fff;
+  background: var(--color-warning);
 }
 
 .calendar-page .fc .fc-button {

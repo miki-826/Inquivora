@@ -6,6 +6,7 @@ import {
   eventToCalendarInput,
   formatEventRange,
   isPointInsideBounds,
+  nextCalendarItemFilter,
   taskToCalendarInput,
   type EventRecord,
 } from "./calendarModel";
@@ -156,6 +157,17 @@ describe("isPointInsideBounds", () => {
   });
 });
 
+describe("nextCalendarItemFilter", () => {
+  it("種類を選ぶと単独表示になり、再選択すると両方表示へ戻る", () => {
+    expect(nextCalendarItemFilter("all", "event")).toBe("event");
+    expect(nextCalendarItemFilter("event", "event")).toBe("all");
+  });
+
+  it("別の種類を選ぶと表示対象を切り替える", () => {
+    expect(nextCalendarItemFilter("event", "task")).toBe("task");
+  });
+});
+
 describe("buildCalendarInputs", () => {
   const events = [event({})];
   const tasks = [
@@ -172,6 +184,16 @@ describe("buildCalendarInputs", () => {
   it("完了タスクを除外できる", () => {
     const inputs = buildCalendarInputs(events, tasks, false);
     expect(inputs.map((i) => i.id)).toEqual(["event:e1", "task:t1"]);
+  });
+
+  it("予定だけに絞り込める", () => {
+    const inputs = buildCalendarInputs(events, tasks, true, "event");
+    expect(inputs.map((i) => i.id)).toEqual(["event:e1"]);
+  });
+
+  it("タスクだけに絞り込める", () => {
+    const inputs = buildCalendarInputs(events, tasks, true, "task");
+    expect(inputs.map((i) => i.id)).toEqual(["task:t1", "task:t2"]);
   });
 });
 

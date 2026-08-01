@@ -43,6 +43,7 @@ export type CalendarInput = {
 };
 
 export type EventRepeat = "none" | "daily" | "weekly";
+export type CalendarItemFilter = "all" | "event" | "task";
 
 export type ScreenBounds = { left: number; right: number; top: number; bottom: number };
 
@@ -52,6 +53,13 @@ export function isPointInsideBounds(
   bounds: ScreenBounds,
 ): boolean {
   return x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom;
+}
+
+export function nextCalendarItemFilter(
+  current: CalendarItemFilter,
+  selected: Exclude<CalendarItemFilter, "all">,
+): CalendarItemFilter {
+  return current === selected ? "all" : selected;
 }
 
 /** 1件の予定入力を日次・週次の独立した予定へ展開する。 */
@@ -122,8 +130,10 @@ export function buildCalendarInputs(
   events: EventRecord[],
   tasks: Task[],
   showCompletedTasks: boolean,
+  filter: CalendarItemFilter = "all",
 ): CalendarInput[] {
-  const eventInputs = events.map(eventToCalendarInput);
+  const eventInputs = filter === "task" ? [] : events.map(eventToCalendarInput);
+  if (filter === "event") return eventInputs;
   const taskInputs = tasks
     .filter((task) => showCompletedTasks || task.status !== "completed")
     .map(taskToCalendarInput)
