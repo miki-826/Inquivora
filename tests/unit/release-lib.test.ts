@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  extractCargoLockPackageVersion,
   extractCargoVersion,
   findForbiddenTrackedFiles,
+  findReleaseReadmeMismatches,
   normalizeRepoUrl,
   scanForSecretLikeStrings,
 } from "../../scripts/release-lib.mjs";
@@ -86,5 +88,36 @@ describe("extractCargoVersion", () => {
 
   it("versionが見つからない場合はnullを返す", () => {
     expect(extractCargoVersion("[dependencies]\nserde = \"1\"\n")).toBeNull();
+  });
+});
+
+describe("extractCargoLockPackageVersion", () => {
+  it("指定したパッケージのバージョンを取得する", () => {
+    const lockfile = `[[package]]\nname = "dependency"\nversion = "1.0.0"\n\n[[package]]\nname = "inquivora"\nversion = "0.1.2"\n`;
+    expect(extractCargoLockPackageVersion(lockfile, "inquivora")).toBe("0.1.2");
+  });
+
+  it("パッケージが存在しない場合はnullを返す", () => {
+    expect(extractCargoLockPackageVersion('[[package]]\nname = "other"\nversion = "1.0.0"\n', "inquivora")).toBeNull();
+  });
+});
+
+describe("findReleaseReadmeMismatches", () => {
+  it("公開名・タグ・インストーラー名が一致するREADMEを許可する", () => {
+    const readme = [
+      "# Inquivora v0.1.2",
+      "https://github.com/miki-826/Inquivora/releases/tag/v0.1.2",
+      "Inquivora_0.1.2_x64-setup.exe",
+    ].join("\n");
+    expect(findReleaseReadmeMismatches(readme, "0.1.2")).toEqual([]);
+  });
+
+  it("旧バージョン表記を検出する", () => {
+    const readme = "Inquivora v0.1.1\n/releases/tag/v0.1.1\nInquivora_0.1.1_x64-setup.exe";
+    expect(findReleaseReadmeMismatches(readme, "0.1.2")).toEqual([
+      "公開リリース名: Inquivora v0.1.2",
+      "リリースURL: /releases/tag/v0.1.2",
+      "インストーラーファイル名: Inquivora_0.1.2_x64-setup.exe",
+    ]);
   });
 });

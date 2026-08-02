@@ -7,7 +7,7 @@
 [![CI](https://github.com/miki-826/Inquivora/actions/workflows/ci.yml/badge.svg)](https://github.com/miki-826/Inquivora/actions/workflows/ci.yml)
 [![Windows Release](https://github.com/miki-826/Inquivora/actions/workflows/release-windows.yml/badge.svg)](https://github.com/miki-826/Inquivora/actions/workflows/release-windows.yml)
 
-[Windows 版をダウンロード](https://github.com/miki-826/Inquivora/releases/tag/v0.1.0-alpha.44) · [リリース一覧](https://github.com/miki-826/Inquivora/releases) · [実装仕様](docs/Inquivora_実装仕様書.md)
+[Inquivora v0.1.2 をダウンロード](https://github.com/miki-826/Inquivora/releases/tag/v0.1.0-alpha.44) · [リリース一覧](https://github.com/miki-826/Inquivora/releases) · [実装仕様](docs/Inquivora_実装仕様書.md)
 
 ## 名前に込めた意味
 
@@ -26,6 +26,15 @@ Inquivora（インキボラ）は、「すべてを取り込み、ひとつに�
 - **必要なときだけ外部 AI** — ChatGPT（OpenAI）または Gemini（Google）を BYOK 方式で利用できます。
 - **日常業務を一元管理** — Monaco Editor を使ったメモ、タスク、カレンダー、通知、横断検索を統合しています。
 
+## v0.1.2 の主な改善
+
+- 予定編集画面の保存ボタンを修正し、作成・編集時の操作性を改善しました。
+- 通知日時を日付と時刻に分け、見やすく指定できる新しい UI に更新しました。
+- 複数の曜日を選択して繰り返し予定を作成できるようになりました。
+- 設定にライセンス専用画面を追加し、分野別の第三者ライセンスを読みやすくしました。
+
+[v0.1.2 の変更内容をすべて確認する](https://github.com/miki-826/Inquivora/releases/tag/v0.1.0-alpha.44)
+
 ## 主な機能
 
 | 分野 | できること |
@@ -36,10 +45,11 @@ Inquivora（インキボラ）は、「すべてを取り込み、ひとつに�
 | 文字起こし | 内蔵 Whisper によるローカル処理、または設定した AI 接続先による処理 |
 | AI 議事録 | 要約、決定事項、タスク候補、未確認事項を生成。モデルと要約プロンプトは「議事録要約」で一元設定 |
 | タスク | 状態・優先度・プロジェクト・担当による絞り込み、期日管理、8 色の色分け |
-| カレンダー | 月・週・日表示、ドラッグによる日時変更、予定／タスクの表示切り替え（初期状態は両方表示） |
-| 通知 | Windows トースト、周期通知、通知から対象画面への移動、自動起動、テスト通知 |
+| カレンダー | 月・週・日表示、ドラッグによる日時変更、複数曜日の繰り返し予定、予定／タスクの表示切り替え |
+| 通知 | 日付・時刻を分けた通知設定、Windows トースト、周期通知、通知から対象画面への移動、自動起動、テスト通知 |
 | 検索 | ファイル・議事録・タスク・予定の横断検索、種別による絞り込み |
 | 表示 | ライト／ダーク／OS 追従、サイドバーとパネル幅の調整、低スペック PC 向け設定 |
+| ライセンス | アプリ本体と Node.js、Rust、.NET・Windows・Audio 関連のライセンスを設定画面から確認 |
 
 ## 動作環境とインストール
 
@@ -47,11 +57,11 @@ Inquivora（インキボラ）は、「すべてを取り込み、ひとつに�
 - 管理者権限は不要
 - インストール先: `%LOCALAPPDATA%\Inquivora`
 
-1. [v0.1.0-alpha.44 の Release](https://github.com/miki-826/Inquivora/releases/tag/v0.1.0-alpha.44) から `Inquivora_0.1.0-alpha.44_x64-setup.exe` をダウンロードします。
+1. [Inquivora v0.1.2 の Release](https://github.com/miki-826/Inquivora/releases/tag/v0.1.0-alpha.44) から `Inquivora_0.1.0-alpha.44_x64-setup.exe` をダウンロードします。
 2. 必要に応じて、同じページの `SHA256SUMS.txt` でファイルを検証します。
 3. インストーラーを実行します。コードサイニング証明書を付けていないため SmartScreen が表示される場合は、内容を確認して［詳細情報］→［実行］を選びます。
 
-> 現在はアルファ版です。重要なデータは別途バックアップしてください。
+> GitHub 上のリリース名は「Inquivora v0.1.2」です。配布ファイル名とアプリ内部には、開発ビルド識別子 `0.1.0-alpha.44` が表示されます。重要なデータは別途バックアップしてください。
 
 ## 最短の確認手順
 
@@ -105,10 +115,12 @@ npm run build
 正式配布用 EXE は GitHub Actions のみで生成します。
 
 ```bash
-npm run release:windows -- --version 0.1.0-alpha.X
+npm run release:windows -- --version X.Y.Z
 ```
 
-リリーススクリプトは、作業ツリー、バージョン整合、テスト、秘密情報を検査し、GitHub 上のコミットとローカルの一致を確認してからタグを作成します。
+指定したバージョンを公開名・タグ・EXE・アプリ内部の共通バージョンとして使用します。リリース前に `package.json`、`package-lock.json`、`Cargo.toml`、`Cargo.lock`、`tauri.conf.json` と README を同じバージョンへ更新してください。
+
+リリーススクリプトは、作業ツリー、全マニフェストと README のバージョン整合、テスト、秘密情報を検査し、GitHub 上のコミットとローカルの一致を確認してからタグを作成します。不一致がある場合はリリースを開始しません。
 
 ## ドキュメントとライセンス
 

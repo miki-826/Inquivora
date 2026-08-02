@@ -34,6 +34,12 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Verify release metadata alignment
+        id: release_meta
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/verify-release-metadata.mjs
+
       - name: Frontend checks
         run: |
           npm run lint
@@ -77,12 +83,12 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 'Inquivora ${{ github.ref_name }}'
+          releaseName: ${{ steps.release_meta.outputs.release_name }}
           releaseBody: |
             ビルド元コミット: ${{ github.sha }}
             各ファイルのSHA-256はSHA256SUMS.txtを参照してください。
           releaseDraft: true
-          prerelease: true
+          prerelease: ${{ steps.release_meta.outputs.prerelease }}
           includeUpdaterJson: false
 
       - name: Generate SHA256SUMS.txt
@@ -113,4 +119,4 @@ jobs:
       - name: Publish release after all artifacts succeed
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit ${{ github.ref_name }} --draft=false --prerelease
+        run: gh release edit ${{ github.ref_name }} --draft=false --prerelease=${{ steps.release_meta.outputs.prerelease }}

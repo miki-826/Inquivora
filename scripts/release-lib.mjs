@@ -71,3 +71,26 @@ export function extractCargoVersion(toml) {
   const match = packageSection.match(/^version\s*=\s*"([^"]+)"/m);
   return match ? match[1] : null;
 }
+
+export function extractCargoLockPackageVersion(lockfile, packageName) {
+  const packageBlocks = lockfile.split(/\r?\n(?=\[\[package\]\])/);
+  for (const block of packageBlocks) {
+    const name = block.match(/^name\s*=\s*"([^"]+)"/m)?.[1];
+    if (name !== packageName) continue;
+    return block.match(/^version\s*=\s*"([^"]+)"/m)?.[1] ?? null;
+  }
+  return null;
+}
+
+export function findReleaseReadmeMismatches(readme, version, tagPrefix = "v") {
+  const tag = `${tagPrefix}${version}`;
+  const expectedValues = [
+    ["公開リリース名", `Inquivora ${tag}`],
+    ["リリースURL", `/releases/tag/${tag}`],
+    ["インストーラーファイル名", `Inquivora_${version}_x64-setup.exe`],
+  ];
+
+  return expectedValues
+    .filter(([, value]) => !readme.includes(value))
+    .map(([label, value]) => `${label}: ${value}`);
+}

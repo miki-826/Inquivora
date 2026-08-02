@@ -4,8 +4,10 @@ import { resolve } from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import {
+  extractCargoLockPackageVersion,
   extractCargoVersion,
   findForbiddenTrackedFiles,
+  findReleaseReadmeMismatches,
   normalizeRepoUrl,
   scanForSecretLikeStrings,
 } from "./release-lib.mjs";
@@ -101,17 +103,30 @@ export function runPreflight({ version = null, skipChecks = false } = {}) {
   });
 
   let projectVersion = null;
-  check("package.json / tauri.conf.json / Cargo.toml のバージョンが一致", () => {
+  check("全マニフェストのバージョンが一致", () => {
     const pkg = JSON.parse(readFileSync(resolve(projectRoot, "package.json"), "utf8"));
+    const packageLock = JSON.parse(readFileSync(resolve(projectRoot, "package-lock.json"), "utf8"));
     const tauriConf = JSON.parse(
       readFileSync(resolve(projectRoot, "src-tauri", "tauri.conf.json"), "utf8"),
     );
     const cargoVersion = extractCargoVersion(
       readFileSync(resolve(projectRoot, "src-tauri", "Cargo.toml"), "utf8"),
     );
-    if (pkg.version !== tauriConf.version || pkg.version !== cargoVersion) {
+    const cargoLockVersion = extractCargoLockPackageVersion(
+      readFileSync(resolve(projectRoot, "src-tauri", "Cargo.lock"), "utf8"),
+      "inquivora",
+    );
+    const versions = {
+      "package.json": pkg.version,
+      "package-lock.json": packageLock.version,
+      "package-lock.json packages['']": packageLock.packages?.[""]?.version,
+      "tauri.conf.json": tauriConf.version,
+      "Cargo.toml": cargoVersion,
+      "Cargo.lock": cargoLockVersion,
+    };
+    if (Object.values(versions).some((value) => value !== pkg.version)) {
       throw new Error(
-        `package.json=${pkg.version} tauri.conf.json=${tauriConf.version} Cargo.toml=${cargoVersion}`,
+        Object.entries(versions).map(([file, value]) => `${file}=${value}`).join(" "),
       );
     }
     projectVersion = pkg.version;
@@ -122,6 +137,17 @@ export function runPreflight({ version = null, skipChecks = false } = {}) {
 
   if (version) {
     const tag = `${config?.releaseTagPrefix ?? "v"}${version}`;
+    check("READMEの公開名・タグ・インストーラー名が指定バージョンと一致", () => {
+      const readme = readFileSync(resolve(projectRoot, "README.md"), "utf8");
+      const mismatches = findReleaseReadmeMismatches(
+        readme,
+        version,
+        config?.releaseTagPrefix ?? "v",
+      );
+      if (mismatches.length > 0) {
+        throw new Error(`READMEを更新してください: ${mismatches.join(", ")}`);
+      }
+    });
     check(`タグ ${tag} が未使用である`, () => {
       const local = run("git", ["tag", "--list", tag]);
       if (local) throw new Error(`ローカルに ${tag} が存在します`);
