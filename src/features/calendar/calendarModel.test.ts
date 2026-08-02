@@ -138,6 +138,27 @@ describe("buildRecurringEventInputs", () => {
     expect(inputs[1].startAtUtc).toBe("2026-08-08T00:00:00.000Z");
   });
 
+  it("複数の曜日を選んで開始日以降へ展開する", () => {
+    // 2026-08-01は土曜日。月・水・金を選ぶと翌週の月曜日から始まる。
+    const inputs = buildRecurringEventInputs(base, "weekdays", 5, [1, 3, 5]);
+    expect(inputs.map((input) => input.startAtUtc)).toEqual([
+      "2026-08-03T00:00:00.000Z",
+      "2026-08-05T00:00:00.000Z",
+      "2026-08-07T00:00:00.000Z",
+      "2026-08-10T00:00:00.000Z",
+      "2026-08-12T00:00:00.000Z",
+    ]);
+    expect(inputs[0].endAtUtc).toBe("2026-08-03T00:30:00.000Z");
+  });
+
+  it("曜日未選択時は開始日の曜日を使う", () => {
+    const inputs = buildRecurringEventInputs(base, "weekdays", 2, []);
+    expect(inputs.map((input) => input.startAtUtc)).toEqual([
+      "2026-08-01T00:00:00.000Z",
+      "2026-08-08T00:00:00.000Z",
+    ]);
+  });
+
   it("繰り返しなしは入力を1件だけ返す", () => {
     expect(buildRecurringEventInputs(base, "none", 99)).toEqual([base]);
   });

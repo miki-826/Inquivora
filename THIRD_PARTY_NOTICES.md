@@ -8,7 +8,7 @@ Inquivora の Windows 配布物に含まれる第三者ソフトウェアと、�
 - `THIRD_PARTY_LICENSES_RUST.txt` — Windows 向け Rust 実行時依存関係
 - `THIRD_PARTY_LICENSES_DOTNET.txt` — .NET sidecar、.NET Runtime、Whisper.net／whisper.cpp、NSIS
 
-レポートは `npm run licenses:generate` で lock file とローカルの解決済み依存関係から再生成できます。2026-08-01 時点の監査では、GPL／AGPL／LGPL の依存関係は検出されていません。MPL-2.0、Apache-2.0、MIT、BSD、ISC、Unicode-3.0、Zlib、CPL-1.0（NSIS の LZMA モジュール）等の通知は各レポートに含まれます。
+レポートは `npm run licenses:generate` で lock file とローカルの解決済み依存関係から再生成できます。2026-08-02 時点の監査では、GPL／AGPL／LGPL の依存関係は検出されていません。MPL-2.0、Apache-2.0、MIT、BSD、ISC、Unicode-3.0、Zlib、CPL-1.0（NSIS の LZMA モジュール）等の通知は各レポートに含まれます。
 
 ## 主なコンポーネント
 

@@ -39,7 +39,7 @@ button:disabled {
 .ws-meeting-panel__start,
 .ai-panel__generate,
 .meeting-setup-hint__button,
-.event-form__submit,
+.event-form__actions .event-form__submit,
 .file-tree__open-button {
   border-color: var(--color-primary);
   background: linear-gradient(135deg, var(--color-primary), var(--color-primary-hover));
@@ -53,7 +53,7 @@ button:disabled {
 .ws-meeting-panel__start:hover:not(:disabled),
 .ai-panel__generate:hover:not(:disabled),
 .meeting-setup-hint__button:hover:not(:disabled),
-.event-form__submit:hover:not(:disabled),
+.event-form__actions .event-form__submit:hover:not(:disabled),
 .file-tree__open-button:hover:not(:disabled) {
   border-color: var(--color-primary-hover);
   background: linear-gradient(135deg, var(--color-primary-hover), var(--color-primary));

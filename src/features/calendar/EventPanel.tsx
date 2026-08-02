@@ -46,6 +46,21 @@ export type CalendarSelection =
   | { type: "task"; id: string }
   | null;
 
+const WEEKDAY_OPTIONS = [
+  { value: 1, label: "月" },
+  { value: 2, label: "火" },
+  { value: 3, label: "水" },
+  { value: 4, label: "木" },
+  { value: 5, label: "金" },
+  { value: 6, label: "土" },
+  { value: 0, label: "日" },
+] as const;
+
+function weekdayFromDateString(dateString: string): number {
+  if (!dateString) return 1;
+  return new Date(`${dateString}T00:00:00Z`).getUTCDay();
+}
+
 function draftFromEvent(event: EventRecord): EventDraft {
   if (event.allDay) {
     const startDate = tokyoDateString(event.startAtUtc);
@@ -119,14 +134,23 @@ function EventForm({
   submitLabel: string;
   meta?: string;
   allowRecurrence?: boolean;
-  onSubmit: (payload: EventInput, repeat: EventRepeat, repeatCount: number) => void;
+  onSubmit: (
+    payload: EventInput,
+    repeat: EventRepeat,
+    repeatCount: number,
+    repeatWeekdays: number[],
+  ) => void;
   onDelete?: () => void;
   onCancel: () => void;
 }) {
   const [draft, setDraft] = useState(initial);
   const [repeat, setRepeat] = useState<EventRepeat>("none");
   const [repeatCount, setRepeatCount] = useState(4);
+  const [repeatWeekdays, setRepeatWeekdays] = useState<number[]>([
+    weekdayFromDateString(initial.startDate),
+  ]);
   const patch = (partial: Partial<EventDraft>) => setDraft((d) => ({ ...d, ...partial }));
+  const recurrenceInvalid = repeat === "weekdays" && repeatWeekdays.length === 0;
 
   return (
     <form
@@ -134,7 +158,9 @@ function EventForm({
       onSubmit={(e) => {
         e.preventDefault();
         const payload = draftToPayload(draft);
-        if (payload) onSubmit(payload, repeat, repeatCount);
+        if (payload && !recurrenceInvalid) {
+          onSubmit(payload, repeat, repeatCount, repeatWeekdays);
+        }
       }}
     >
       <h2 className="pane-title">{heading}</h2>
@@ -214,11 +240,18 @@ function EventForm({
             繰り返し
             <select
               value={repeat}
-              onChange={(event) => setRepeat(event.target.value as EventRepeat)}
+              onChange={(event) => {
+                const next = event.target.value as EventRepeat;
+                setRepeat(next);
+                if (next === "weekdays" && repeatWeekdays.length === 0) {
+                  setRepeatWeekdays([weekdayFromDateString(draft.startDate)]);
+                }
+              }}
             >
               <option value="none">繰り返さない</option>
               <option value="daily">毎日</option>
               <option value="weekly">毎週</option>
+              <option value="weekdays">曜日を指定</option>
             </select>
           </label>
           {repeat !== "none" && (
@@ -236,13 +269,41 @@ function EventForm({
           {repeat !== "none" && (
             <p>初回を含めて{Math.max(2, Math.min(100, repeatCount || 2))}件を一括作成します</p>
           )}
+          {repeat === "weekdays" && (
+            <fieldset className="event-form__weekdays">
+              <legend>繰り返す曜日</legend>
+              <div className="event-form__weekday-list">
+                {WEEKDAY_OPTIONS.map((weekday) => {
+                  const selected = repeatWeekdays.includes(weekday.value);
+                  return (
+                    <button
+                      key={weekday.value}
+                      type="button"
+                      className={`event-form__weekday${selected ? " event-form__weekday--selected" : ""}`}
+                      aria-pressed={selected}
+                      onClick={() =>
+                        setRepeatWeekdays((current) =>
+                          selected
+                            ? current.filter((value) => value !== weekday.value)
+                            : [...current, weekday.value],
+                        )
+                      }
+                    >
+                      {weekday.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {recurrenceInvalid && <span role="alert">曜日を1つ以上選択してください</span>}
+            </fieldset>
+          )}
         </div>
       )}
       <div className="event-form__actions">
         <button
           type="submit"
           className="event-form__submit button-primary"
-          disabled={!draft.title.trim()}
+          disabled={!draft.title.trim() || recurrenceInvalid}
           aria-label={submitLabel}
         >
           <span className="event-form__submit-label">{submitLabel}</span>
@@ -414,7 +475,7 @@ export function EventPanel({
         submitLabel="作成"
         allowRecurrence
         onCancel={onClose}
-        onSubmit={(payload, repeat, repeatCount) => {
+        onSubmit={(payload, repeat, repeatCount, repeatWeekdays) => {
           if (repeat === "none") {
             void createEvent(payload).then((created) => {
               if (created) onClose();
@@ -424,7 +485,7 @@ export function EventPanel({
           const count = Number.isFinite(repeatCount)
             ? Math.max(2, Math.min(100, Math.trunc(repeatCount)))
             : 2;
-          const inputs = buildRecurringEventInputs(payload, repeat, count);
+          const inputs = buildRecurringEventInputs(payload, repeat, count, repeatWeekdays);
           void createEvents(inputs).then((created) => {
             if (created) onClose();
           });

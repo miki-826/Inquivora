@@ -2206,7 +2206,7 @@ input[type="radio"] {
   color: var(--color-danger);
 }
 
-.event-form__submit {
+.event-form__actions .event-form__submit {
   min-width: 72px;
   flex-shrink: 0;
   background: var(--color-primary);
@@ -2224,7 +2224,7 @@ input[type="radio"] {
   white-space: nowrap;
 }
 
-.event-form__submit:disabled {
+.event-form__actions .event-form__submit:disabled {
   opacity: 0.7;
   cursor: default;
   color: #fff !important;
@@ -2273,6 +2273,43 @@ input[type="radio"] {
   grid-column: 1 / -1;
   margin: 0;
   color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.event-form__weekdays {
+  grid-column: 1 / -1;
+  min-width: 0;
+  border: 0;
+}
+
+.event-form__weekdays legend {
+  margin-bottom: 6px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.event-form__weekday-list {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(30px, 1fr));
+  gap: 5px;
+}
+
+.event-form__weekday {
+  min-width: 0;
+  padding: 7px 4px;
+  border-radius: 999px;
+}
+
+.event-form__weekday--selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.event-form__weekdays [role="alert"] {
+  display: block;
+  margin-top: 6px;
+  color: var(--color-danger);
   font-size: 11px;
 }
 
@@ -2526,22 +2563,51 @@ input[type="radio"] {
   color: var(--color-danger);
 }
 
-.reminder-section__add {
+.reminder-section__composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-subtle);
+}
+
+.reminder-section__control {
   display: flex;
-  gap: 6px;
-}
-
-.reminder-section__add input {
-  flex: 1;
   min-width: 0;
+  flex-direction: column;
+  gap: 5px;
 }
 
-.reminder-section__add {
-  flex-wrap: wrap;
+.reminder-section__control > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.reminder-section__control input,
+.reminder-section__control select {
+  width: 100%;
+  min-width: 0;
+  background-color: var(--color-surface);
+}
+
+.reminder-section__control--repeat {
+  grid-column: 1 / -1;
 }
 
 .reminder-section__repeat-select {
   font-size: 12px;
+}
+
+.reminder-section__add-button {
+  grid-column: 1 / -1;
+  justify-self: end;
+  min-width: 76px;
 }
 
 .event-panel__edit {
@@ -2599,29 +2665,62 @@ input[type="radio"] {
   margin: 4px 0 12px;
 }
 
-.settings-license {
-  margin: 10px 0 12px;
-  font-size: 12px;
+.settings-page--licenses {
+  width: 100%;
+  max-width: none;
 }
 
-.settings-license summary {
-  color: var(--color-primary);
-  cursor: pointer;
+.settings-license-page {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
 }
 
-.settings-license pre {
-  max-height: 260px;
-  margin: 10px 0 0;
-  padding: 12px;
-  overflow: auto;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+.settings-license-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.settings-license-page__version {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  border-radius: 999px;
   color: var(--color-text-muted);
   background: var(--color-surface-subtle);
+  font-size: 11px;
+}
+
+.settings-license-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 12px;
+}
+
+.settings-license-tabs__button--active {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.settings-license-document {
+  min-height: 320px;
+  flex: 1;
+  margin: 0;
+  padding: 16px 18px;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  background: var(--color-surface-subtle);
   font-family: var(--font-mono);
-  font-size: 10px;
-  line-height: 1.5;
+  font-size: 13px;
+  line-height: 1.7;
   white-space: pre-wrap;
+  user-select: text;
 }
 
 .settings-actions {
@@ -3729,7 +3828,7 @@ textarea:focus {
 :root[data-theme="dark"] .ws-meeting-panel__start,
 :root[data-theme="dark"] .ai-panel__generate,
 :root[data-theme="dark"] .meeting-setup-hint__button,
-:root[data-theme="dark"] .event-form__submit,
+:root[data-theme="dark"] .event-form__actions .event-form__submit,
 :root[data-theme="dark"] .conflict-dialog__actions button:first-child,
 :root[data-theme="dark"] .editor-toolbar__badge,
 :root[data-theme="dark"] .search-chip--on,

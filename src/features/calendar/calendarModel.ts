@@ -42,7 +42,7 @@ export type CalendarInput = {
   };
 };
 
-export type EventRepeat = "none" | "daily" | "weekly";
+export type EventRepeat = "none" | "daily" | "weekly" | "weekdays";
 export type CalendarItemFilter = "all" | "event" | "task" | "none";
 
 export type ScreenBounds = { left: number; right: number; top: number; bottom: number };
@@ -74,22 +74,47 @@ export function buildRecurringEventInputs(
   input: EventInput,
   repeat: EventRepeat,
   count: number,
+  weekdays: number[] = [],
 ): EventInput[] {
   if (repeat === "none") return [input];
   const normalizedCount = Number.isFinite(count)
     ? Math.max(1, Math.min(100, Math.trunc(count)))
     : 1;
-  const stepDays = repeat === "daily" ? 1 : 7;
   const shiftIso = (value: string, days: number) =>
     new Date(Date.parse(value) + days * 86_400_000).toISOString();
-  return Array.from({ length: normalizedCount }, (_, index) => {
-    const days = index * stepDays;
+  const eventAtOffset = (days: number): EventInput => {
     return {
       ...input,
       startAtUtc: shiftIso(input.startAtUtc, days),
       endAtUtc: input.endAtUtc ? shiftIso(input.endAtUtc, days) : input.endAtUtc,
     };
-  });
+  };
+
+  if (repeat !== "weekdays") {
+    const stepDays = repeat === "daily" ? 1 : 7;
+    return Array.from({ length: normalizedCount }, (_, index) =>
+      eventAtOffset(index * stepDays),
+    );
+  }
+
+  const selectedWeekdays = new Set(
+    weekdays
+      .filter((weekday) => Number.isInteger(weekday))
+      .map((weekday) => ((weekday % 7) + 7) % 7),
+  );
+  if (selectedWeekdays.size === 0) {
+    const isoWeekday = Number(formatInTimeZone(input.startAtUtc, TOKYO_TZ, "i"));
+    selectedWeekdays.add(isoWeekday === 7 ? 0 : isoWeekday);
+  }
+
+  const inputs: EventInput[] = [];
+  for (let days = 0; inputs.length < normalizedCount; days += 1) {
+    const shiftedStart = shiftIso(input.startAtUtc, days);
+    const isoWeekday = Number(formatInTimeZone(shiftedStart, TOKYO_TZ, "i"));
+    const weekday = isoWeekday === 7 ? 0 : isoWeekday;
+    if (selectedWeekdays.has(weekday)) inputs.push(eventAtOffset(days));
+  }
+  return inputs;
 }
 
 /** 日付文字列（yyyy-MM-dd）を日数分ずらす */

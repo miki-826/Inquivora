@@ -11,6 +11,7 @@ import {
   loadSettingsPage,
   loadTasksPage,
   loadWorkspacePage,
+  loadLicenseSettingsPage,
 } from "./routePreload";
 
 // 画面ごとにコード分割し、開いた画面だけを読み込む（低スペックPCでの起動負荷・メモリを軽減）
@@ -35,6 +36,9 @@ const SettingsPage = lazy(() =>
 const AiSettingsPage = lazy(() =>
   loadAiSettingsPage().then((m) => ({ default: m.AiSettingsPage })),
 );
+const LicenseSettingsPage = lazy(() =>
+  loadLicenseSettingsPage().then((m) => ({ default: m.LicenseSettingsPage })),
+);
 
 export const router = createHashRouter([
   {
@@ -49,6 +53,7 @@ export const router = createHashRouter([
       { path: "calendar", element: <CalendarPage /> },
       { path: "settings", element: <SettingsPage /> },
       { path: "settings/ai", element: <AiSettingsPage /> },
+      { path: "settings/licenses", element: <LicenseSettingsPage /> },
       { path: "*", element: <RedirectToLastScreen /> },
     ],
   },

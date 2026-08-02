@@ -11,6 +11,9 @@ export function SettingsNav() {
         <NavLink to="/settings/ai" className="settings-nav__link">
           AI・API
         </NavLink>
+        <NavLink to="/settings/licenses" className="settings-nav__link">
+          ライセンス
+        </NavLink>
       </nav>
     </div>
   );

@@ -1,4 +1,4 @@
-import { Bell, Trash2 } from "lucide-react";
+import { Bell, CalendarDays, Clock3, Repeat2, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   createReminder,
@@ -35,7 +35,8 @@ function repeatLabel(minutes: number | null): string | null {
 /// §12.3 通知追加。タスクまたは予定のリマインダー一覧・追加・削除。
 export function ReminderSection({ taskId, eventId }: { taskId?: string; eventId?: string }) {
   const [reminders, setReminders] = useState<Reminder[]>([]);
-  const [draft, setDraft] = useState("");
+  const [draftDate, setDraftDate] = useState("");
+  const [draftTime, setDraftTime] = useState("");
   const [repeatMinutes, setRepeatMinutes] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -59,15 +60,16 @@ export function ReminderSection({ taskId, eventId }: { taskId?: string; eventId?
   const reload = () => setRefreshKey((key) => key + 1);
 
   const add = async () => {
-    if (!draft) return;
+    if (!draftDate || !draftTime) return;
     try {
       await createReminder({
         taskId,
         eventId,
-        notifyAtUtc: new Date(draft).toISOString(),
+        notifyAtUtc: new Date(`${draftDate}T${draftTime}`).toISOString(),
         repeatIntervalMinutes: repeatMinutes > 0 ? repeatMinutes : null,
       });
-      setDraft("");
+      setDraftDate("");
+      setDraftTime("");
       setRepeatMinutes(0);
       reload();
     } catch (err) {
@@ -128,26 +130,46 @@ export function ReminderSection({ taskId, eventId }: { taskId?: string; eventId?
           </li>
         ))}
       </ul>
-      <div className="reminder-section__add">
-        <input
-          type="datetime-local"
-          value={draft}
-          aria-label="通知日時"
-          onChange={(e) => setDraft(e.target.value)}
-        />
-        <select
-          className="reminder-section__repeat-select"
-          value={repeatMinutes}
-          aria-label="繰り返し間隔"
-          onChange={(e) => setRepeatMinutes(Number(e.target.value))}
+      <div className="reminder-section__composer">
+        <label className="reminder-section__control">
+          <span><CalendarDays size={14} aria-hidden />日付</span>
+          <input
+            type="date"
+            value={draftDate}
+            aria-label="通知日"
+            onChange={(e) => setDraftDate(e.target.value)}
+          />
+        </label>
+        <label className="reminder-section__control">
+          <span><Clock3 size={14} aria-hidden />時刻</span>
+          <input
+            type="time"
+            value={draftTime}
+            aria-label="通知時刻"
+            onChange={(e) => setDraftTime(e.target.value)}
+          />
+        </label>
+        <label className="reminder-section__control reminder-section__control--repeat">
+          <span><Repeat2 size={14} aria-hidden />繰り返し</span>
+          <select
+            className="reminder-section__repeat-select"
+            value={repeatMinutes}
+            aria-label="繰り返し間隔"
+            onChange={(e) => setRepeatMinutes(Number(e.target.value))}
+          >
+            {REPEAT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          className="reminder-section__add-button button-primary"
+          disabled={!draftDate || !draftTime}
+          onClick={() => void add()}
         >
-          {REPEAT_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <button type="button" disabled={!draft} onClick={() => void add()}>
           追加
         </button>
       </div>

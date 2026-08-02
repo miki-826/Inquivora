@@ -12,7 +12,6 @@ import { useThemeStore } from "../../stores/useThemeStore";
 import { useSettingsStore } from "../../stores/useSettingsStore";
 import { SettingsNav } from "./SettingsNav";
 import { THEME_OPTIONS } from "./themeModel";
-import thirdPartyNotices from "../../../THIRD_PARTY_NOTICES.md?raw";
 
 const NOTIFICATION_SETTING_KEY = "notifications";
 
@@ -374,26 +373,6 @@ function AppearanceSettingsSection() {
   );
 }
 
-function LicenseSection() {
-  return (
-    <section className="settings-section">
-      <h2 className="settings-section__title">ライセンス</h2>
-      <p className="settings-note">
-        Inquivora は Monaco Editor、Tauri、Whisper.net などの第三者ソフトウェアを使用しています。
-        各コンポーネントのライセンスと著作権表示は配布パッケージに同梱しています。
-      </p>
-      <details className="settings-license">
-        <summary>第三者ライセンスの概要</summary>
-        <pre>{thirdPartyNotices}</pre>
-      </details>
-      <p className="settings-note">
-        詳細は THIRD_PARTY_LICENSES_NODE.txt、THIRD_PARTY_LICENSES_RUST.txt、
-        THIRD_PARTY_LICENSES_DOTNET.txt をご確認ください。
-      </p>
-    </section>
-  );
-}
-
 export function SettingsPage() {
   return (
     <ThreePaneLayout left={<SettingsNav />}>
@@ -401,7 +380,6 @@ export function SettingsPage() {
         <AppearanceSettingsSection />
         <NotificationSettingsSection />
         <GeneralSettingsSection />
-        <LicenseSection />
       </div>
     </ThreePaneLayout>
   );
