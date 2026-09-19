@@ -9,6 +9,18 @@
 
 [Inquivora v0.1.2 をダウンロード](https://github.com/miki-826/Inquivora/releases/tag/v0.1.0-alpha.44) · [リリース一覧](https://github.com/miki-826/Inquivora/releases) · [実装仕様](docs/Inquivora_実装仕様書.md)
 
+## 画面
+
+| メモ（Markdown） | メモ（HTML） |
+| --- | --- |
+| ![メモ（Markdown）](docs/images/memo-markdown.png) | ![メモ（HTML）](docs/images/memo-html.png) |
+| 書きながら右側でプレビュー | HTML もそのまま表示 |
+
+| 会議 → AI 議事録 | カレンダー |
+| --- | --- |
+| ![会議とAI議事録](docs/images/meeting-minutes.png) | ![カレンダー](docs/images/calendar.png) |
+| 文字起こし・要約からタスク化 | 予定・タスクが見える化 |
+
 ## 名前に込めた意味
 
 Inquivora（インキボラ）は、「すべてを取り込み、ひとつにつなぐ」というコンセプトから生まれた造語です。
@@ -122,6 +134,14 @@ npm run release:windows -- --version X.Y.Z
 
 リリーススクリプトは、作業ツリー、全マニフェストと README のバージョン整合、テスト、秘密情報を検査し、GitHub 上のコミットとローカルの一致を確認してからタグを作成します。不一致がある場合はリリースを開始しません。
 
+## 開発記録
+
+本プロジェクトは、AI と分担しながら開発を進めています。仕様を Markdown で一元管理し、機能単位で小さく実装・動作確認を繰り返す進め方を採り、テストとリリースは GitHub Actions に任せています。実装の詳細まで把握しきれていない箇所は、自動テストで挙動を固定したうえで AI に実行・説明させながら段階的に理解を進めています。
+
+開発の進め方、設計判断、つまずいた点と対処、未解決の課題については、勉強会での発表資料にまとめています。
+
+- [発表資料: バイブコーディングでメモアプリ作成（2026 年 8 月）](docs/slides/Inquivora_発表資料.pdf)
+
 ## ドキュメントとライセンス
 
 - [実装仕様書](docs/Inquivora_実装仕様書.md) — 本プロジェクトの唯一の仕様書
@@ -132,8 +152,3 @@ npm run release:windows -- --version X.Y.Z
 プロジェクト本体にはオープンソースライセンスを設定していません。第三者ライセンスで許諾された部分を除き、リポジトリの公開だけを理由とする複製・改変・再配布の許諾はありません。
 
 依存関係を更新した場合は、次のコマンドで配布用ライセンス一覧を再生成します。
-
-```powershell
-cargo install cargo-about --version 0.9.1 --locked --features cli
-npm run licenses:generate
-```
